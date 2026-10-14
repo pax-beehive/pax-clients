@@ -690,106 +690,117 @@ private fun SessionScreen(target: AgentSession, state: WorkspaceState, vm: Works
     val session by vm.session.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            target.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        StatusLabel(session.connection, session.connection == "Connected")
-                    }
-                },
-                navigationIcon = {
-                    WorkspaceIconButton(onClick = vm::close) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
-                    }
-                },
-                actions = {
-                    WorkspaceIconButton(onClick = vm::reconnect) {
-                        Icon(Icons.Outlined.Refresh, "Reconnect")
-                    }
-                },
-            )
-        },
-        bottomBar = {
-            if (!session.locked)
-                MessageComposer(
-                    connection = session.connection,
-                    busy = session.busy,
-                    error = session.error,
-                    onSend = vm::send,
-                    onStop = vm::stop,
-                )
-        },
-    ) { padding ->
-        if (session.locked) {
-            LazyColumn(
-                Modifier.padding(padding).fillMaxSize(),
-                contentPadding = PaddingValues(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
-                    Text(
-                        "Enable encrypted session access",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(
-                        "You are signed in. This encrypted session also requires approval of this client’s encryption key on the agent’s computer."
-                    )
-                }
-                item { WorkspaceButton(onClick = vm::beginPairing) { Text("Request key access") } }
-                state.pairing?.let { pending ->
-                    item {
-                        Text("Run this command on your agent's computer:")
-                        SelectionContainer {
+    SendMotionHost { motion ->
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
                             Text(
-                                vm.pairingCommand(pending),
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.bodySmall,
+                                target.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
                             )
+                            StatusLabel(session.connection, session.connection == "Connected")
                         }
+                    },
+                    navigationIcon = {
+                        WorkspaceIconButton(onClick = vm::close) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                        }
+                    },
+                    actions = {
+                        WorkspaceIconButton(onClick = vm::reconnect) {
+                            Icon(Icons.Outlined.Refresh, "Reconnect")
+                        }
+                    },
+                )
+            },
+            bottomBar = {
+                if (!session.locked)
+                    MessageComposer(
+                        connection = session.connection,
+                        busy = session.busy,
+                        error = session.error,
+                        onSend = vm::send,
+                        onStop = vm::stop,
+                        motion = motion,
+                    )
+            },
+        ) { padding ->
+            if (session.locked) {
+                LazyColumn(
+                    Modifier.padding(padding).fillMaxSize(),
+                    contentPadding = PaddingValues(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item {
+                        Text(
+                            "Enable encrypted session access",
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        Text(
+                            "You are signed in. This encrypted session also requires approval of this client’s encryption key on the agent’s computer."
+                        )
                     }
                     item {
-                        WorkspaceOutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    clipboard.setClipEntry(
-                                        ClipEntry(
-                                            ClipData.newPlainText(
-                                                "Encryption key approval",
-                                                vm.pairingCommand(pending),
+                        WorkspaceButton(onClick = vm::beginPairing) { Text("Request key access") }
+                    }
+                    state.pairing?.let { pending ->
+                        item {
+                            Text("Run this command on your agent's computer:")
+                            SelectionContainer {
+                                Text(
+                                    vm.pairingCommand(pending),
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                        item {
+                            WorkspaceOutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        clipboard.setClipEntry(
+                                            ClipEntry(
+                                                ClipData.newPlainText(
+                                                    "Encryption key approval",
+                                                    vm.pairingCommand(pending),
+                                                )
                                             )
                                         )
-                                    )
+                                    }
                                 }
+                            ) {
+                                Text("Copy key approval command")
                             }
-                        ) {
-                            Text("Copy key approval command")
+                            WorkspaceButton(onClick = vm::finishPairing) {
+                                Text("Check key access")
+                            }
                         }
-                        WorkspaceButton(onClick = vm::finishPairing) { Text("Check key access") }
                     }
+                    state.error?.let { item { ErrorNotice(it) } }
                 }
-                state.error?.let { item { ErrorNotice(it) } }
-            }
-        } else
-            ConversationTimeline(
-                messages = session.messages,
-                connection = session.connection,
-                hasOlder = session.hasOlder,
-                loadingOlder = session.loadingOlder,
-                onOlder = vm::older,
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                approvals =
-                    state.workspace.approvals.filter { it.request_session_id == target.session_id },
-                approval = { approval ->
-                    ApprovalCard(approval, state.working) { vm.decide(approval, it) }
-                },
-            )
+            } else
+                ConversationTimeline(
+                    messages = session.messages,
+                    connection = session.connection,
+                    hasOlder = session.hasOlder,
+                    loadingOlder = session.loadingOlder,
+                    onOlder = vm::older,
+                    motion = motion,
+                    waitingForReply = session.busy && session.messages.lastOrNull()?.role == "user",
+                    modifier = Modifier.padding(padding).fillMaxSize(),
+                    approvals =
+                        state.workspace.approvals.filter {
+                            it.request_session_id == target.session_id
+                        },
+                    approval = { approval ->
+                        ApprovalCard(approval, state.working) { vm.decide(approval, it) }
+                    },
+                )
+        }
     }
 }
 

@@ -120,7 +120,16 @@ class ConversationUiTest {
                         {},
                         Modifier.height(240.dp),
                     )
-                    MessageComposer(connection.value, false, null, { sent = it }, {})
+                    MessageComposer(
+                        connection.value,
+                        false,
+                        null,
+                        {
+                            sent = it
+                            "user:test"
+                        },
+                        {},
+                    )
                 }
             }
         }

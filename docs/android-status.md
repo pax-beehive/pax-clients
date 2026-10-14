@@ -1,5 +1,11 @@
 # Android internal client
 
+## Send interaction (0.1.13)
+
+The rounded composer lifts into a compact message bubble on send. A single breathing
+dot bridges the wait for the first reply; incoming content fades in. Network dispatch
+is immediate and independent of motion. See [design and verification](android-send-motion.md).
+
 ## Conversation responsiveness (0.1.12)
 
 Sending now shows a local prompt immediately. Ordinary sessions render the POST's

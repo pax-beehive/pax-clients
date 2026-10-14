@@ -3,6 +3,7 @@ package net.paxtech.workspace
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -230,9 +231,18 @@ constructor(
         }
     }
 
-    fun send(text: String) {
-        if (sendJob?.isActive != true)
-            sendJob = launchAction { withContext(Dispatchers.Default) { runtime.send(text) } }
+    fun send(text: String): String? {
+        if (
+            sendJob?.isActive == true ||
+                session.value.busy ||
+                session.value.connection != "Connected"
+        )
+            return null
+        val requestId = "prompt_${UUID.randomUUID()}"
+        sendJob = launchAction {
+            withContext(Dispatchers.Default) { runtime.send(text, requestId) }
+        }
+        return "user:$requestId"
     }
 
     fun stop() {

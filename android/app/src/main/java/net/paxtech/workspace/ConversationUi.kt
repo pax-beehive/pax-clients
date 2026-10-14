@@ -1,19 +1,32 @@
 package net.paxtech.workspace
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import net.paxtech.workspace.data.Approval
@@ -25,9 +38,11 @@ internal fun MessageComposer(
     connection: String,
     busy: Boolean,
     error: String?,
-    onSend: (String) -> Unit,
+    onSend: (String) -> String?,
     onStop: () -> Unit,
+    motion: SendMotionState? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     var draft by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(connection) {
@@ -41,47 +56,93 @@ internal fun MessageComposer(
         ) {
             error?.let { ErrorNotice(it) }
             Surface(
-                shape = MaterialTheme.shapes.extraLarge,
+                modifier =
+                    Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 650f))
+                        .onGloballyPositioned { motion?.composer = it.boundsInRoot() },
+                shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                border =
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .65f)),
             ) {
-                Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.Bottom) {
-                    TextField(
-                        draft,
-                        { draft = it },
-                        placeholder = { Text("Message your agent") },
-                        modifier = Modifier.weight(1f).testTag("message-composer"),
-                        maxLines = 6,
-                        colors =
-                            TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
+                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier =
+                            Modifier.weight(1f)
+                                .padding(horizontal = 12.dp, vertical = 12.dp)
+                                .heightIn(min = 24.dp)
+                                .testTag("message-composer"),
+                        textStyle =
+                            MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface
                             ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        maxLines = 6,
+                        decorationBox = { inner ->
+                            Box {
+                                if (draft.isEmpty())
+                                    Text(
+                                        "Message your agent",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                inner()
+                            }
+                        },
                     )
-                    FilledIconButton(
+                    ComposerAction(
+                        busy = busy,
+                        enabled = busy || (draft.isNotBlank() && connection == "Connected"),
                         onClick = {
                             if (busy) onStop()
                             else {
                                 val text = draft
-                                submitted = text
-                                draft = ""
-                                onSend(text)
+                                val id = onSend(text)
+                                if (id != null) {
+                                    motion?.launch(id, text)
+                                    submitted = text
+                                    draft = ""
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
                             }
                         },
-                        enabled = busy || (draft.isNotBlank() && connection == "Connected"),
-                        modifier = Modifier.padding(bottom = 4.dp).size(48.dp),
-                        shape = CircleShape,
-                    ) {
-                        Icon(
-                            if (busy) Icons.Outlined.Close else WorkspaceSymbols.Send,
-                            if (busy) "Stop" else "Send",
-                            Modifier.size(24.dp),
-                        )
-                    }
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ComposerAction(busy: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by
+        animateFloatAsState(
+            if (pressed) .9f else 1f,
+            spring(dampingRatio = .75f, stiffness = 900f),
+            label = "send-press",
+        )
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = interaction,
+        modifier =
+            Modifier.size(48.dp).graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        shape = CircleShape,
+    ) {
+        Crossfade(busy, animationSpec = tween(140), label = "send-stop") { stopping ->
+            if (stopping)
+                Box(
+                    Modifier.size(14.dp)
+                        .background(MaterialTheme.colorScheme.onPrimary, RoundedCornerShape(3.dp))
+                        .semantics { contentDescription = "Stop" }
+                )
+            else Icon(WorkspaceSymbols.Send, "Send", Modifier.size(24.dp))
         }
     }
 }
@@ -101,14 +162,21 @@ internal fun ConversationTimeline(
     approvals: List<Approval> = emptyList(),
     approval: @Composable (Approval) -> Unit = {},
     list: LazyListState = rememberLazyListState(),
+    motion: SendMotionState? = null,
+    waitingForReply: Boolean = false,
 ) {
     val atTail by remember(list) { derivedStateOf { !list.canScrollBackward } }
     // Capture the old layout before the new tail is measured. Stable-key anchoring otherwise
     // keeps the previous message visible even when a reader was following the conversation.
     val followNewTail = atTail
-    LaunchedEffect(messages.lastOrNull()?.id, approvals.lastOrNull()?.approval_id) {
+    LaunchedEffect(
+        messages.lastOrNull()?.id,
+        approvals.lastOrNull()?.approval_id,
+        waitingForReply,
+    ) {
         if (followNewTail) list.scrollToItem(0)
     }
+    LaunchedEffect(motion?.flight?.id) { if (motion?.flight != null) list.scrollToItem(0) }
     LazyColumn(
         modifier.testTag("conversation-timeline"),
         state = list,
@@ -116,6 +184,18 @@ internal fun ConversationTimeline(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        if (waitingForReply)
+            item(key = "reply-waiting", contentType = "reply-waiting") {
+                Box(
+                    Modifier.animateItem(
+                        fadeInSpec = tween(160),
+                        placementSpec = null,
+                        fadeOutSpec = tween(120),
+                    )
+                ) {
+                    ReplyDot()
+                }
+            }
         items(
             approvals.asReversed(),
             key = { "approval:${it.approval_id}" },
@@ -123,7 +203,17 @@ internal fun ConversationTimeline(
         ) {
             approval(it)
         }
-        items(messages.asReversed(), key = { it.id }, contentType = { it.role }) { MessageCard(it) }
+        items(messages.asReversed(), key = { it.id }, contentType = { it.role }) {
+            Box(
+                Modifier.animateItem(
+                    fadeInSpec = tween(160),
+                    placementSpec = null,
+                    fadeOutSpec = tween(120),
+                )
+            ) {
+                MessageCard(it, motion)
+            }
+        }
         if (messages.isEmpty())
             item {
                 Text(
@@ -141,7 +231,8 @@ internal fun ConversationTimeline(
 }
 
 @Composable
-internal fun MessageCard(message: ChatItem) {
+internal fun MessageCard(message: ChatItem, motion: SendMotionState? = null) {
+    SideEffect { motion?.observe(message) }
     var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
     val collapsible = message.role in setOf("tool", "thought")
     val shown = if (collapsible && !expanded) message.text.take(600) else message.text
@@ -169,14 +260,18 @@ internal fun MessageCard(message: ChatItem) {
             }
         Surface(
             modifier =
-                if (message.role == "user") Modifier.fillMaxWidth(.9f) else Modifier.fillMaxWidth(),
+                (if (message.role == "user")
+                        Modifier.fillMaxWidth(.9f).wrapContentWidth(Alignment.End)
+                    else Modifier.fillMaxWidth())
+                    .onGloballyPositioned { motion?.destination(message, it.boundsInRoot()) }
+                    .graphicsLayer { alpha = if (motion?.matches(message) == true) 0f else 1f },
             color =
                 if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
                 else MaterialTheme.colorScheme.background,
-            shape = MaterialTheme.shapes.large,
+            shape = RoundedCornerShape(26.dp),
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(if (message.role == "user") 16.dp else 0.dp),
+                Modifier.padding(if (message.role == "user") 16.dp else 0.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (message.role in setOf("tool", "thought", "approval")) {
@@ -188,7 +283,7 @@ internal fun MessageCard(message: ChatItem) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (message.status.isNotBlank())
+                if (message.status.isNotBlank() && message.status != "Sending…")
                     Text(
                         message.status,
                         style = MaterialTheme.typography.labelSmall,

@@ -388,14 +388,14 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
         }
     }
 
-    suspend fun send(text: String) {
+    suspend fun send(text: String, clientRequestId: String = "prompt_${UUID.randomUUID()}") {
         require(text.isNotBlank())
         check(
             mutable.value.connection == "Connected" && !mutable.value.busy && !mutable.value.locked
         )
         check(sending.compareAndSet(false, true)) { "A send is already in progress" }
         mutable.update { it.copy(busy = true, error = null) }
-        val promptId = "prompt_${UUID.randomUUID()}"
+        val promptId = clientRequestId
         val promptTurn = "local:$promptId"
         try {
             mutex.withLock {
