@@ -265,6 +265,27 @@ class ProtocolTest {
     }
 
     @Test
+    fun encryptedPromptEchoReconcilesByRequestIdWithoutDuplicatingLocalEcho() {
+        val timeline = Timeline()
+        timeline.prompt("request_1", "local:request_1", "Hello", "Sending…")
+        timeline.frame(
+            buildJsonObject {
+                put("method", "session/prompt")
+                put("id", "request_1")
+                putJsonObject("params") {
+                    putJsonArray("prompt") { add(body("type" to "text", "text" to "Hello")) }
+                }
+            },
+            "encrypted_turn_1",
+        )
+        val item = timeline.snapshot().single()
+        assertEquals("user:request_1", item.id)
+        assertEquals("encrypted_turn_1", item.turn)
+        assertEquals("Hello", item.text)
+        assertEquals("", item.status)
+    }
+
+    @Test
     fun canonicalTurnReplacesTransientTextWithoutDuplicatingOlderTurns() {
         val timeline = Timeline()
         val older =

@@ -38,6 +38,8 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
     private var pendingRpcId: String? = null
     private var nativeId = ""
     private var dirty = false
+    private val sending = MutableStateFlow(false)
+    private var observerGeneration = 0L
 
     private fun route(suffix: String) =
         userPath("agents", session!!.agent_id, "sessions", session!!.session_id, suffix)
@@ -94,32 +96,11 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                     busy = target.runtime_status in setOf("running", "waiting_approval"),
                 )
             }
-            var backoff = 500L
-            while (isActive) {
-                try {
-                    if (target.encrypted) encryptedEvents() else plainEvents()
-                    backoff = 500
-                    // The ordinary observer ends when idle. Check for a new turn while visible.
-                    delay(if (target.encrypted) 500 else 3000)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    if (
-                        e !is IOException ||
-                            (e is ApiFailure && e.status !in setOf(408, 429, 500, 502, 503, 504))
-                    )
-                        throw e
-                    mutable.update {
-                        it.copy(
-                            connection = "Reconnecting",
-                            error = "Connection interrupted; recovering session.",
-                        )
-                    }
-                    delay(backoff)
-                    backoff = (backoff * 2).coerceAtMost(10000)
-                    if (!target.encrypted) history(false)
+            if (target.encrypted) observe(target)
+            else
+                sending.collectLatest { active ->
+                    if (!active && mutable.value.connection != "Needs reconnect") observe(target)
                 }
-            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -135,6 +116,34 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                     connection = if (it.connection == "Unavailable") "Unavailable" else "Paused",
                     busy = false,
                 )
+            }
+        }
+    }
+
+    private suspend fun observe(target: AgentSession) {
+        var backoff = 500L
+        while (currentCoroutineContext().isActive) {
+            try {
+                if (target.encrypted) encryptedEvents() else plainEvents()
+                backoff = 500
+                delay(if (target.encrypted) 500 else 3000)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (
+                    e !is IOException ||
+                        (e is ApiFailure && e.status !in setOf(408, 429, 500, 502, 503, 504))
+                )
+                    throw e
+                mutable.update {
+                    it.copy(
+                        connection = "Reconnecting",
+                        error = "Connection interrupted; recovering session.",
+                    )
+                }
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(10000)
+                if (!target.encrypted) history(false)
             }
         }
     }
@@ -182,6 +191,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
     }
 
     private suspend fun plainEvents() {
+        val generation = mutex.withLock { observerGeneration }
         var turn = ""
         val canonical = linkedMapOf<String, JsonObject>()
         repo.api.events(request(route("events"))).collect { event ->
@@ -190,6 +200,9 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                 "Session event route mismatch"
             }
             mutex.withLock {
+                // collectLatest cancels the observer on send. Also guard a frame already queued
+                // for this lock, so it cannot replace the POST stream with a durable snapshot.
+                if (sending.value || generation != observerGeneration) return@withLock
                 when (data.text("type")) {
                     "turn_start" -> {
                         turn = data.text("turn_id")
@@ -221,7 +234,10 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                     "resync" -> throw IOException("Session replay required")
                 }
                 dirty = true
-                mutable.update { it.copy(connection = "Connected", error = null) }
+                mutable.update {
+                    if (it.connection == "Needs reconnect") it
+                    else it.copy(connection = "Connected", error = null)
+                }
             }
         }
     }
@@ -377,8 +393,18 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
         check(
             mutable.value.connection == "Connected" && !mutable.value.busy && !mutable.value.locked
         )
+        check(sending.compareAndSet(false, true)) { "A send is already in progress" }
         mutable.update { it.copy(busy = true, error = null) }
+        val promptId = "prompt_${UUID.randomUUID()}"
+        val promptTurn = "local:$promptId"
         try {
+            mutex.withLock {
+                // Fence queued observer frames even if a very short send is conflated by StateFlow.
+                if (!session!!.encrypted) observerGeneration++
+                timeline.prompt(promptId, promptTurn, text, "Sending…")
+                dirty = true
+                publish()
+            }
             if (session!!.encrypted) {
                 if (nativeId.isBlank()) {
                     val cwd =
@@ -411,7 +437,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                     pendingRpc = null
                     pendingRpcId = null
                 }
-                val id = "prompt_${UUID.randomUUID()}"
+                val id = promptId
                 requestId = id
                 encryptedCommand(
                     buildJsonObject {
@@ -431,6 +457,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                 )
             } else {
                 var terminal = false
+                var liveTurn = promptTurn
                 repo.api
                     .events(
                         request(
@@ -450,25 +477,62 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                         require(
                             data.text("session_id", session!!.session_id) == session!!.session_id
                         )
-                        when (data.text("type")) {
-                            "error" ->
-                                throw ApiFailure(422, data.text("message", "Agent request failed"))
-                            "done",
-                            "turn_done",
-                            "interrupted" -> terminal = true
+                        mutex.withLock {
+                            when (data.text("type")) {
+                                "turn_started" -> {
+                                    liveTurn =
+                                        data.text("turn_id").also { require(it.isNotBlank()) }
+                                    timeline.prompt(promptId, liveTurn, text, "")
+                                }
+                                "acp",
+                                "approval_required" -> {
+                                    val turn = data.text("turn_id", liveTurn)
+                                    require(turn == liveTurn) {
+                                        "Conversation turn identity mismatch"
+                                    }
+                                    val frame = data.obj("frame")
+                                    // Our prompt is already visible. Do not append its server echo.
+                                    val update =
+                                        frame.obj("params").obj("update").ifEmpty {
+                                            frame.obj("update")
+                                        }
+                                    if (
+                                        frame.text("method") != "session/prompt" &&
+                                            update.text("sessionUpdate") != "user_message_chunk"
+                                    ) {
+                                        timeline.frame(frame, turn)
+                                    }
+                                }
+                                "error" ->
+                                    throw ApiFailure(
+                                        422,
+                                        data.text("message", "Agent request failed"),
+                                    )
+                                "done",
+                                "turn_done",
+                                "interrupted" -> terminal = true
+                            }
+                            dirty = true
                         }
-                        // The GET observer owns rendering, avoiding duplicate copies of the same
-                        // stream.
                     }
                 check(terminal) {
                     "Delivery outcome is unknown. Reconnect to inspect the session before sending again."
                 }
                 history(false)
-                mutable.update { it.copy(busy = false) }
+            }
+            mutex.withLock {
+                timeline.promptStatus(promptId, "")
+                dirty = true
+                publish()
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            mutex.withLock {
+                timeline.promptStatus(promptId, "Delivery unconfirmed")
+                dirty = true
+                publish()
+            }
             mutable.update {
                 it.copy(
                     error = e.message ?: "Delivery outcome unknown",
@@ -476,6 +540,11 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
                     connection = "Needs reconnect",
                 )
             }
+        } finally {
+            if (!session!!.encrypted) mutable.update { it.copy(busy = false) }
+            // Restart a fresh observer only after the final history replacement; never let a
+            // stale in-flight history batch overwrite the live response or render a duplicate.
+            sending.value = false
         }
     }
 

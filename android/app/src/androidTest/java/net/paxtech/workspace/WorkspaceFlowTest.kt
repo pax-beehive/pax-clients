@@ -3,6 +3,7 @@ package net.paxtech.workspace
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -11,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import java.io.File
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import net.paxtech.workspace.data.*
 import okhttp3.mockwebserver.*
@@ -25,6 +27,7 @@ class WorkspaceFlowTest {
     @Volatile private var sent = false
     @Volatile private var decision = false
     @Volatile private var gallery = false
+    @Volatile private var streaming = false
 
     @Before
     fun setup() {
@@ -48,6 +51,26 @@ class WorkspaceFlowTest {
                             )
                     if (path.endsWith("/conversation")) {
                         sent = true
+                        if (streaming) {
+                            fun chunk(text: String) =
+                                """{"type":"acp","turn_id":"turn_live","frame":{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"text":"$text"}}}}}"""
+                            val records =
+                                listOf(
+                                    """{"type":"turn_started","turn_id":"turn_live"}""",
+                                    chunk("First visible chunk"),
+                                ) +
+                                    List(6) { """{"type":"heartbeat"}""" } +
+                                    listOf(chunk(" more"), """{"type":"done"}""")
+                            return MockResponse()
+                                .setHeader("Content-Type", "text/event-stream")
+                                .setBody(
+                                    records.joinToString("") {
+                                        val event = "data: $it\n\n"
+                                        event + ":" + " ".repeat(1024 - event.length - 3) + "\n\n"
+                                    }
+                                )
+                                .throttleBody(1024, 300, TimeUnit.MILLISECONDS)
+                        }
                         return MockResponse()
                             .setHeader("Content-Type", "text/event-stream")
                             .setBody(
@@ -83,6 +106,8 @@ class WorkspaceFlowTest {
                                 ],"pagination":{"has_older":false}}"""
                             path.endsWith("/sessions") ->
                                 """{"sessions":[{"session_id":"session_test","node_id":"node_test","agent_id":"agent_test","name":"Android integration session","runtime_status":"idle"}]}"""
+                            streaming && sent && path.endsWith("/history") ->
+                                """{"messages":[{"message_id":"canonical_user","turn_id":"turn_live","role":"user","session_seq":1,"parts":[{"text":"Show a streamed response"}]},{"message_id":"canonical_agent","turn_id":"turn_live","role":"assistant","session_seq":2,"parts":[{"text":"First visible chunk more"}]}],"pagination":{"has_older":false}}"""
                             path.endsWith("/history") ->
                                 """{"messages":[{"message_id":"message_test","session_id":"session_test","turn_id":"turn_test","role":"assistant","session_seq":1,"parts":[{"part_index":0,"part_type":"text","text":"${if(sent) "Instruction received" else "Hello from the test agent"}"}]}],"pagination":{"has_older":false}}"""
                             path.endsWith("/projects") ->
@@ -172,6 +197,47 @@ class WorkspaceFlowTest {
         compose.onNodeWithText("PaxWorkspace").assertIsDisplayed()
         assertEquals(0, server.requestCount)
         capture("sign-in")
+    }
+
+    @Test
+    fun sendsImmediatelyStreamsIncrementallyAndKeepsNextDraft() {
+        streaming = true
+        launch(true)
+        awaitText("Enter workspace")
+        compose.onNodeWithText("Enter workspace").performClick()
+        awaitText("Android integration session")
+        compose.onNodeWithText("Android integration session").performClick()
+        awaitText("Hello from the test agent")
+        compose.onNodeWithTag("message-composer").performTextInput("Show a streamed response")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitUntil(1000) {
+            compose
+                .onNodeWithTag("message-composer")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.EditableText]
+                .text
+                .isEmpty()
+        }
+        // This must be a timeline bubble, not merely text still sitting in the composer.
+        compose
+            .onNode(
+                hasText("Show a streamed response") and
+                    hasAnyAncestor(hasTestTag("conversation-timeline"))
+            )
+            .assertIsDisplayed()
+        awaitText("First visible chunk")
+        compose.onNodeWithText("First visible chunk more").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Stop").assertIsEnabled()
+        compose.onNodeWithTag("message-composer").performTextInput("Next draft while streaming")
+        capture("streaming-partial-with-draft")
+        awaitText("First visible chunk more")
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithContentDescription("Send").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onAllNodesWithText("Show a streamed response").assertCountEquals(1)
+        compose.onAllNodesWithText("First visible chunk more").assertCountEquals(1)
+        compose.onNodeWithTag("message-composer").assertTextContains("Next draft while streaming")
+        capture("streaming-reconciled-with-draft")
     }
 
     @Test

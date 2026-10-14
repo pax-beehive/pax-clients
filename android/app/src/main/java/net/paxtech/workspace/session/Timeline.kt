@@ -50,6 +50,17 @@ class Timeline {
         changedChunks.remove(id)
     }
 
+    fun prompt(requestId: String, turn: String, text: String, status: String) {
+        val id = "user:$requestId"
+        items[id] = ChatItem(id, turn, "user", text, status = status)
+        lastChunk = ""
+    }
+
+    fun promptStatus(requestId: String, status: String) {
+        val id = "user:$requestId"
+        items[id]?.let { items[id] = it.copy(status = status) }
+    }
+
     fun replaceTurn(turn: String, messages: List<JsonObject>) {
         items.values.filter { it.turn == turn }.map { it.id }.forEach(::remove)
         messages.forEach(::history)

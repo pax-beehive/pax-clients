@@ -1,5 +1,13 @@
 # Android internal client
 
+## Conversation responsiveness (0.1.12)
+
+Sending now shows a local prompt immediately. Ordinary sessions render the POST's
+live ACP chunks; the durable observer is suspended during that send and restarted
+after final history reconciliation. See [causes and validation](android-conversation-responsiveness.md).
+Draft state is isolated from message updates, and the timeline follows the tail
+without folding a growing answer when it passes a character threshold.
+
 ## Visual refinement (0.1.11)
 
 The native workspace now has consistent neutral surfaces, clearer session rows,

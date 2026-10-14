@@ -5,12 +5,10 @@ import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -43,9 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import net.paxtech.workspace.data.*
 import net.paxtech.workspace.session.*
 
@@ -54,7 +50,6 @@ private val tabs = listOf("Home", "Approvals", "Settings")
 @Composable
 fun WorkspaceShell(vm: WorkspaceViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val session by vm.session.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val activity = androidx.activity.compose.LocalActivity.current
     DisposableEffect(lifecycle, activity) {
@@ -105,8 +100,7 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
                 home = { WorkspaceHome(state, vm) },
                 detail = {
                     val target = state.selected
-                    if (target != null)
-                        key(target.session_id) { SessionScreen(target, state, session, vm) }
+                    if (target != null) key(target.session_id) { SessionScreen(target, state, vm) }
                     else
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             WorkspaceEmptyState(
@@ -692,25 +686,10 @@ private fun ApprovalCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SessionScreen(
-    target: AgentSession,
-    state: WorkspaceState,
-    session: SessionState,
-    vm: WorkspaceViewModel,
-) {
-    var draft by rememberSaveable(target.session_id) { mutableStateOf("") }
-    var submitted by rememberSaveable(target.session_id) { mutableStateOf("") }
-    LaunchedEffect(session.connection) {
-        if (session.connection == "Needs reconnect" && draft.isBlank()) draft = submitted
-    }
-    val list = rememberLazyListState()
-    val atBottom by remember { derivedStateOf { !list.canScrollForward } }
+private fun SessionScreen(target: AgentSession, state: WorkspaceState, vm: WorkspaceViewModel) {
+    val session by vm.session.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    LaunchedEffect(session.messages.lastOrNull()) {
-        if (atBottom && session.messages.isNotEmpty())
-            list.scrollToItem(session.messages.lastIndex + if (session.hasOlder) 1 else 0)
-    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -739,64 +718,13 @@ private fun SessionScreen(
         },
         bottomBar = {
             if (!session.locked)
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    Column(
-                        Modifier.navigationBarsPadding()
-                            .imePadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        session.error?.let { ErrorNotice(it) }
-                        Surface(
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(6.dp),
-                                verticalAlignment = Alignment.Bottom,
-                            ) {
-                                TextField(
-                                    draft,
-                                    { draft = it },
-                                    placeholder = { Text("Message your agent") },
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 6,
-                                    colors =
-                                        TextFieldDefaults.colors(
-                                            focusedContainerColor = Color.Transparent,
-                                            unfocusedContainerColor = Color.Transparent,
-                                            focusedIndicatorColor = Color.Transparent,
-                                            unfocusedIndicatorColor = Color.Transparent,
-                                        ),
-                                )
-                                FilledIconButton(
-                                    onClick = {
-                                        if (session.busy) vm.stop()
-                                        else {
-                                            val text = draft
-                                            submitted = text
-                                            draft = ""
-                                            vm.send(text)
-                                        }
-                                    },
-                                    enabled =
-                                        session.busy ||
-                                            (draft.isNotBlank() &&
-                                                session.connection == "Connected"),
-                                    modifier = Modifier.padding(bottom = 4.dp).size(48.dp),
-                                    shape = CircleShape,
-                                ) {
-                                    Icon(
-                                        if (session.busy) Icons.Outlined.Close
-                                        else WorkspaceSymbols.Send,
-                                        if (session.busy) "Stop" else "Send",
-                                        Modifier.size(24.dp),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                MessageComposer(
+                    connection = session.connection,
+                    busy = session.busy,
+                    error = session.error,
+                    onSend = vm::send,
+                    onStop = vm::stop,
+                )
         },
     ) { padding ->
         if (session.locked) {
@@ -849,144 +777,24 @@ private fun SessionScreen(
                 state.error?.let { item { ErrorNotice(it) } }
             }
         } else
-            LazyColumn(
-                Modifier.padding(padding).fillMaxSize(),
-                state = list,
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                if (session.hasOlder)
-                    item(key = "older") {
-                        WorkspaceOutlinedButton(
-                            onClick = vm::older,
-                            enabled = !session.loadingOlder,
-                        ) {
-                            Text(if (session.loadingOlder) "Loading…" else "Load earlier messages")
-                        }
-                    }
-                items(session.messages, key = { it.id }, contentType = { it.role }) { message ->
-                    MessageCard(message)
-                }
-                if (session.messages.isEmpty())
-                    item {
-                        Text(
-                            if (session.connection == "Connected")
-                                "Send a message to continue this session."
-                            else "Loading session…"
-                        )
-                    }
-                state.workspace.approvals
-                    .filter { it.request_session_id == target.session_id }
-                    .forEach { approval ->
-                        item(key = "approval:${approval.approval_id}") {
-                            ApprovalCard(approval, state.working) { vm.decide(approval, it) }
-                        }
-                    }
-            }
+            ConversationTimeline(
+                messages = session.messages,
+                connection = session.connection,
+                hasOlder = session.hasOlder,
+                loadingOlder = session.loadingOlder,
+                onOlder = vm::older,
+                modifier = Modifier.padding(padding).fillMaxSize(),
+                approvals =
+                    state.workspace.approvals.filter { it.request_session_id == target.session_id },
+                approval = { approval ->
+                    ApprovalCard(approval, state.working) { vm.decide(approval, it) }
+                },
+            )
     }
 }
 
 @Composable
-private fun MessageCard(message: ChatItem) {
-    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
-    val collapsible = message.role in setOf("tool", "thought") || message.text.length > 12000
-    val shown = if (collapsible && !expanded) message.text.take(600) else message.text
-    Column(
-        Modifier.fillMaxWidth(),
-        horizontalAlignment = if (message.role == "user") Alignment.End else Alignment.Start,
-    ) {
-        if (message.role == "assistant")
-            Row(
-                Modifier.padding(bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    WorkspaceSymbols.Agent,
-                    null,
-                    Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Agent",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        Surface(
-            modifier =
-                if (message.role == "user") Modifier.fillMaxWidth(.9f) else Modifier.fillMaxWidth(),
-            color =
-                if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
-                else MaterialTheme.colorScheme.background,
-            shape = MaterialTheme.shapes.large,
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(if (message.role == "user") 16.dp else 0.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (message.role in setOf("tool", "thought", "approval")) {
-                    Text(
-                        message.title.ifBlank {
-                            if (message.role == "thought") "Thinking" else "Activity"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (message.status.isNotBlank())
-                    Text(
-                        message.status,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                SelectionContainer { MarkdownText(shown) }
-                if (collapsible)
-                    WorkspaceOutlinedButton(onClick = { expanded = !expanded }) {
-                        Text(if (expanded) "Collapse" else "Expand")
-                    }
-            }
-        }
-    }
-}
-
-private data class TextBlock(val text: String, val code: Boolean)
-
-@Composable
-private fun MarkdownText(text: String) {
-    val blocks by
-        produceState(listOf(TextBlock(text, false)), text) {
-            value =
-                withContext(Dispatchers.Default) {
-                    text.split("```").mapIndexed { index, value ->
-                        TextBlock(
-                            if (index % 2 == 1) value.substringAfter('\n', value) else value,
-                            index % 2 == 1,
-                        )
-                    }
-                }
-        }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        blocks.forEach { block ->
-            if (block.code)
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text(
-                        block.text,
-                        Modifier.padding(10.dp),
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            else Text(block.text, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
-private fun ErrorNotice(message: String) {
+internal fun ErrorNotice(message: String) {
     Text(
         message,
         Modifier.padding(vertical = 8.dp),
