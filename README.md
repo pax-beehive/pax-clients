@@ -13,8 +13,9 @@ message sending, stop requests, approvals, history pagination, reconnect, and
 local-device E2EE authorization. See [Android delivery status](docs/android-status.md)
 for implemented behavior, validation, and remaining integration work.
 
-This is not a production-verified or store-ready release. Real-account login and
-live-agent interoperability still need end-to-end validation. The native gateway
+This is not a store-ready release. Real-account login and authenticated resource
+access and ordinary Claude session round trips have passed live verification;
+encrypted-session and physical-device validation remain open. The native gateway
 fix for regional Cloudflare Access redirects and current verification are recorded
 in [UI and login integration](docs/android-ui-login-fix.md). At the user's request,
 the project remains local; no remote repository has been created or pushed.

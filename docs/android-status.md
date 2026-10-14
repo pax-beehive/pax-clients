@@ -67,13 +67,14 @@ physical-device validation. No release signing or store submission was performed
 
 ## Next integration sequence
 
-1. Verify production gateway access from Android and complete a real account login.
-2. Run a dedicated live test session: history, prompt, stop, approval, disconnect,
-   foreground recovery, device authorization, encrypted history, and encrypted prompt.
+1. Completed: production gateway, real account login, ordinary history, live
+   Claude prompt/reply, test-session stop and process-restart credential recovery.
+2. Remaining: live approval, extended reconnect, logout/revocation, device
+   authorization, encrypted history and encrypted prompt.
 3. Fix discrepancies found by those checks before calling the client production-ready.
 4. Extend creation, rich content, notifications, and physical-device coverage.
 
-## Final local verification
+## Initial 0.1.0 local verification
 
 - `assembleDebug`, `testDebugUnitTest`, `lintDebug`, and
   `connectedDebugAndroidTest`: passed. Unit tests: 13; emulator tests: 2;

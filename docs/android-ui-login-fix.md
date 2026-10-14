@@ -59,8 +59,8 @@ ANDROID_SERIAL=emulator-5580 ./scripts/android.sh :app:connectedDebugAndroidTest
 The check requires anonymous reads to return 401 and invalid-key reads to return
 401 or 404. The current PostgreSQL Manager maps an unknown API key to 404; this
 is distinct from a missing native endpoint. The live smoke is skipped unless
-explicitly enabled. Real browser confirmation, credential issuance and live-agent
-operations still require account-level verification.
+explicitly enabled. The production smoke does not test browser confirmation or credential issuance;
+see the real-account verification below for the subsequent manual checks.
 
 ## Pixel / foldable debugging
 
@@ -97,8 +97,41 @@ SHA-256: `7525519c1d7d10d0acb317e0eb2d031b3889012cc75001c54a41ceefa07337c6`.
 Ignored local evidence: `artifacts/validation-0.1.1/` (build/lint/unit results,
 production smoke XML, narrow/wide UI XML and screenshots).
 
-Real-account confirmation/credential issuance, live-agent messaging and physical
-fold/unfold behavior remain unverified. The AOSP emulator includes WebView shell,
+Physical fold/unfold behavior and encrypted-session account-level validation
+remain unverified. Subsequent real-account checks are recorded below. The AOSP emulator includes WebView shell,
 not a full Chrome installation; if its browser cannot complete account sign-in,
 use the login screen's copy-link option to confirm in a regular browser. This
 still requires an explicit account confirmation before any credential is issued.
+
+## Real-account continuation (2026-10-13)
+
+After the user approved the browser confirmation, Android completed the
+commit/save/ack sequence and opened the authenticated US workspace. Settings
+showed the expected account, and Devices showed the Mac online. No account
+credential was extracted or copied outside the application.
+
+A dedicated text-only test session was created from the web using the ignored
+`artifacts/live-agent-smoke` directory. Android discovered it, loaded its history,
+and established a live connection. Stopping this test from Android changed the
+web view to completed; a follow-up prompt sent from Android appeared in the same
+web session. Neither prompt requested tools or file changes.
+
+The local Codex adapter logged model metadata parsing errors for `max` and a
+fallback-metadata warning for its selected model. Both Codex test requests
+were stopped without a successful text response. The exact Codex runtime cause
+remains unresolved; no global model configuration or harness was changed.
+Account screenshots are retained only in ignored
+`artifacts/validation-0.1.1/real-account/`.
+
+The existing Claude connection provided the control test: its web-originated
+prompt returned `PAX_ANDROID_CLAUDE_OK`, visible in Android history. A subsequent
+prompt sent from Android returned `PAX_ANDROID_ROUNDTRIP`, visible in both clients.
+Android's screenshot and UI hierarchy confirmed the response and Connected state.
+This proves a live ordinary-session request/response path, not encrypted-session
+pairing or every provider. Force-stopping and relaunching Android also restored
+the authenticated workspace without another browser login.
+
+Remaining live checks: encrypted pairing/replay/prompt, real approval decisions,
+logout/revocation, physical Pixel networking and fold/unfold behavior. The Codex
+runtime issue is separate from the now-verified native gateway and Claude path.
+No application code or production deployment changed during this continuation.

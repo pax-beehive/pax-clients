@@ -62,8 +62,8 @@ to the canonical WorkOS site. No WorkOS secret is stored in the app.
 
 User API keys are revocable credentials; they do not have an implemented OAuth
 refresh-token cycle. Production start/poll and authorization boundaries are
-verified from Android; real-account confirmation and live-agent operations remain
-pending. See [current integration evidence](android-ui-login-fix.md).
+verified from Android, as are real-account confirmation and ordinary-session
+Claude message round trips. Live encrypted-session verification remains open. See [current integration evidence](android-ui-login-fix.md).
 
 ## Encryption and streaming
 
