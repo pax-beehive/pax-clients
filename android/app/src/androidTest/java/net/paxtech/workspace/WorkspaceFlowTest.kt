@@ -150,6 +150,10 @@ class WorkspaceFlowTest {
     @Test
     fun signedOutAppShowsNativeSignIn() {
         launch(false)
+        awaitText("Sign in to PaxWorkspace")
+        capture("welcome-signed-out")
+        scenario!!.recreate()
+        compose.onNodeWithText("Sign in to PaxWorkspace").assertIsDisplayed().performClick()
         awaitText("Sign in")
         compose.onNodeWithText("PaxWorkspace").assertIsDisplayed()
         assertEquals(0, server.requestCount)
@@ -159,6 +163,10 @@ class WorkspaceFlowTest {
     @Test
     fun opensSessionSendsInstructionAndReviewsApproval() {
         launch(true)
+        awaitText("Enter workspace")
+        capture("welcome-signed-in")
+        compose.onNodeWithText("Android integration session").assertDoesNotExist()
+        compose.onNodeWithText("Enter workspace").performClick()
         awaitText("Android integration session")
         capture("home")
         compose.onNodeWithText("Android integration session").performClick()
@@ -212,6 +220,10 @@ class WorkspaceFlowTest {
         }
         resize(true)
         launch(true)
+        awaitText("Enter workspace")
+        capture("welcome-signed-in")
+        compose.onNodeWithText("Android integration session").assertDoesNotExist()
+        compose.onNodeWithText("Enter workspace").performClick()
         awaitText("Android integration session")
         compose.onNodeWithText("Android integration session").performClick()
         awaitText("Hello from the test agent")

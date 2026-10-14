@@ -3,6 +3,7 @@ package net.paxtech.workspace
 import android.content.ClipData
 import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +14,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -59,7 +61,21 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
             if (activity?.isChangingConfigurations != true) vm.setForeground(false)
         }
     }
+    var welcome by rememberSaveable { mutableStateOf(true) }
+    // Resume an in-flight browser sign-in directly, including after process recreation.
+    LaunchedEffect(state.login, state.needsRegion) {
+        if (state.login != null || state.needsRegion) welcome = false
+    }
+    if (welcome && state.login == null && !state.needsRegion) {
+        WelcomeScreen(
+            signedIn = state.credential != null,
+            restoring = state.loading && state.credential == null,
+            onEnter = { welcome = false },
+        )
+        return
+    }
     if (state.credential == null || state.login != null) {
+        BackHandler(enabled = state.login == null && !state.working) { welcome = true }
         LoginScreen(state, vm)
         return
     }
@@ -160,7 +176,9 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 Text("Hong Kong")
                             }
                         }
-                        TextButton(onClick = vm::signOut) { Text("Use another account") }
+                        WorkspaceOutlinedButton(onClick = vm::signOut) {
+                            Text("Use another account")
+                        }
                     } else if (state.login == null) {
                         WorkspaceButton(
                             onClick = vm::startLogin,
@@ -185,7 +203,10 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                         ) {
                             Text("Continue in browser")
                         }
-                        TextButton(onClick = vm::cancelLogin, enabled = !state.working) {
+                        WorkspaceOutlinedButton(
+                            onClick = vm::cancelLogin,
+                            enabled = !state.working,
+                        ) {
                             Text("Cancel")
                         }
                     }
@@ -220,12 +241,12 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                 },
                 navigationIcon = {
                     if (tab in listOf("Projects", "Devices"))
-                        IconButton(onClick = { tab = "Settings" }) {
+                        WorkspaceIconButton(onClick = { tab = "Settings" }) {
                             Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to settings")
                         }
                 },
                 actions = {
-                    IconButton(onClick = { vm.refresh() }) {
+                    WorkspaceIconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Outlined.Refresh, "Refresh")
                     }
                 },
@@ -263,7 +284,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
         LazyColumn(
             Modifier.padding(padding).fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { item { ErrorNotice(it) } }
@@ -289,12 +310,16 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(onClick = { tab = "Projects" }) { Text("Projects") }
+                            WorkspaceOutlinedButton(onClick = { tab = "Projects" }) {
+                                Text("Projects")
+                            }
                         }
                     }
                     if (project.isNotEmpty())
                         item {
-                            TextButton(onClick = { project = "" }) { Text("Show all projects") }
+                            WorkspaceOutlinedButton(onClick = { project = "" }) {
+                                Text("Show all projects")
+                            }
                         }
                     val shown =
                         state.workspace.sessions.filter {
@@ -305,34 +330,50 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         Surface(
                             onClick = { vm.open(target) },
                             modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.background,
+                            color =
+                                if (state.selected?.session_id == target.session_id)
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                else MaterialTheme.colorScheme.surfaceContainer,
+                            shape = MaterialTheme.shapes.large,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         ) {
-                            Column(
-                                Modifier.padding(vertical = 16.dp, horizontal = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            Row(
+                                Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Text(
-                                    target.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    target.runtime_status.replace('_', ' '),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                if (target.encrypted)
+                                Column(
+                                    Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
                                     Text(
-                                        "End-to-end encrypted",
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                else if (target.preview.isNotBlank())
-                                    Text(
-                                        target.preview,
+                                        target.title,
+                                        style = MaterialTheme.typography.titleMedium,
                                         maxLines = 2,
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
+                                    Text(
+                                        target.runtime_status.replace('_', ' '),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    if (target.encrypted)
+                                        Text(
+                                            "End-to-end encrypted",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    else if (target.preview.isNotBlank())
+                                        Text(
+                                            target.preview,
+                                            maxLines = 2,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                }
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowForward,
+                                    null,
+                                    Modifier.size(20.dp),
+                                )
                             }
                         }
                     }
@@ -344,7 +385,10 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         }
                     if (state.workspace.hasMore)
                         item {
-                            TextButton(onClick = { vm.refresh(true) }, enabled = !state.loading) {
+                            WorkspaceOutlinedButton(
+                                onClick = { vm.refresh(true) },
+                                enabled = !state.loading,
+                            ) {
                                 Text("Load more sessions")
                             }
                         }
@@ -354,7 +398,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         ListItem(
                             headlineContent = { Text(item.display_name) },
                             trailingContent = {
-                                TextButton(
+                                WorkspaceOutlinedButton(
                                     onClick = {
                                         project = item.project_id
                                         tab = "Home"
@@ -402,13 +446,13 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        TextButton(
+                        WorkspaceOutlinedButton(
                             onClick = { tab = "Devices" },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text("Devices")
                         }
-                        TextButton(
+                        WorkspaceOutlinedButton(
                             onClick = { tab = "Projects" },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -445,7 +489,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                 )
             },
             confirmButton = {
-                TextButton(
+                WorkspaceButton(
                     onClick = {
                         signOut = false
                         vm.signOut()
@@ -454,7 +498,9 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                     Text("Sign out")
                 }
             },
-            dismissButton = { TextButton(onClick = { signOut = false }) { Text("Cancel") } },
+            dismissButton = {
+                WorkspaceOutlinedButton(onClick = { signOut = false }) { Text("Cancel") }
+            },
         )
 }
 
@@ -492,7 +538,7 @@ private fun ApprovalCard(
                 )
             },
             confirmButton = {
-                TextButton(
+                WorkspaceButton(
                     onClick = {
                         selected = null
                         onDecision(option)
@@ -501,7 +547,9 @@ private fun ApprovalCard(
                     Text("Confirm")
                 }
             },
-            dismissButton = { TextButton(onClick = { selected = null }) { Text("Cancel") } },
+            dismissButton = {
+                WorkspaceOutlinedButton(onClick = { selected = null }) { Text("Cancel") }
+            },
         )
     }
 }
@@ -542,12 +590,12 @@ private fun SessionScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = vm::close) {
+                    WorkspaceIconButton(onClick = vm::close) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = vm::reconnect) {
+                    WorkspaceIconButton(onClick = vm::reconnect) {
                         Icon(Icons.Outlined.Refresh, "Reconnect")
                     }
                 },
@@ -570,8 +618,12 @@ private fun SessionScreen(
                             modifier = Modifier.fillMaxWidth(),
                             maxLines = 6,
                         )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            if (session.busy) TextButton(onClick = vm::stop) { Text("Stop") }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        ) {
+                            if (session.busy)
+                                WorkspaceOutlinedButton(onClick = vm::stop) { Text("Stop") }
                             WorkspaceButton(
                                 onClick = {
                                     val text = draft
@@ -585,6 +637,12 @@ private fun SessionScreen(
                                         session.connection == "Connected",
                             ) {
                                 Text("Send")
+                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowForward,
+                                    null,
+                                    Modifier.size(18.dp),
+                                )
                             }
                         }
                     }
@@ -649,7 +707,10 @@ private fun SessionScreen(
             ) {
                 if (session.hasOlder)
                     item(key = "older") {
-                        TextButton(onClick = vm::older, enabled = !session.loadingOlder) {
+                        WorkspaceOutlinedButton(
+                            onClick = vm::older,
+                            enabled = !session.loadingOlder,
+                        ) {
                             Text(if (session.loadingOlder) "Loading…" else "Load earlier messages")
                         }
                     }
@@ -707,7 +768,7 @@ private fun MessageCard(message: ChatItem) {
                 )
             SelectionContainer { MarkdownText(shown) }
             if (collapsible)
-                TextButton(onClick = { expanded = !expanded }) {
+                WorkspaceOutlinedButton(onClick = { expanded = !expanded }) {
                     Text(if (expanded) "Collapse" else "Expand")
                 }
         }

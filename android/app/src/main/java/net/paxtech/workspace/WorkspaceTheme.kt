@@ -1,11 +1,17 @@
 package net.paxtech.workspace
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -88,14 +94,32 @@ fun WorkspaceButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
-) =
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(), label = "button press")
     Button(
         onClick,
-        modifier.heightIn(min = 48.dp),
+        modifier.heightIn(min = 52.dp).graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
         enabled = enabled,
-        shape = MaterialTheme.shapes.medium,
+        interactionSource = interaction,
+        shape = MaterialTheme.shapes.large,
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFF0F0F0),
+                contentColor = Color(0xFF202020),
+                disabledContainerColor = Color(0xFF383838),
+                disabledContentColor = Color(0xFF888888),
+            ),
+        elevation =
+            ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 0.dp),
+        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 14.dp),
         content = content,
     )
+}
 
 @Composable
 fun WorkspaceOutlinedButton(
@@ -103,11 +127,29 @@ fun WorkspaceOutlinedButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
-) =
+) {
     OutlinedButton(
         onClick,
         modifier.heightIn(min = 48.dp),
         enabled = enabled,
         shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, if (enabled) Color(0xFF808080) else Color(0xFF484848)),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF353535)),
         content = content,
     )
+}
+
+@Composable
+fun WorkspaceIconButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    OutlinedIconButton(
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 4.dp).size(48.dp),
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors =
+            IconButtonDefaults.outlinedIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
+        content = content,
+    )
+}
