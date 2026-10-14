@@ -1,4 +1,37 @@
-# Android welcome and controls (0.1.3)
+# Android welcome and controls
+
+## Satellite arrival (0.1.4)
+
+The welcome scene now shows a shaded satellite with twin solar arrays, a metal
+bus, a recessed communication dish and an antenna. Native Canvas projects a
+cached 3D mesh with perspective and depth-sorted faces. The satellite drifts and
+turns slowly; 180 orbit particles pass behind and in front of it, with another
+100 background stars. Cyan and violet light sit on a deep navy background.
+
+A 1.8-second arrival brings the satellite and particles together, followed by
+the title and entry button. The button is usable as soon as account restoration
+finishes; animation never imposes an extra navigation delay. The entrance is
+remembered across activity recreation. Motion follows the system animator scale
+and stops when the welcome screen is not resumed. No dependencies or network
+assets were added. The platform splash screen shares the navy background and
+uses a cyan orbit mark, avoiding a white flash before Compose starts.
+
+Validation: debug build and lint passed, with 25 JVM tests and all 3 isolated
+emulator UI tests passing. Reviewed expanded and compact screenshots and
+recorded the actual animated entrance. The scene also renders completely when
+system animations are disabled. Solar-array surfaces were corrected after
+visual review to avoid overlapping coplanar faces hiding individual cells.
+
+Installed 0.1.4 (5) on the USB-connected Pixel 11 Pro Fold without clearing
+account data; the installed package matches the local APK. The phone was locked
+at installation, so physical-device visual acceptance remains with the user.
+
+Artifact: `artifacts/paxworkspace-android-0.1.4-debug.apk`. SHA-256:
+`ca5195faefd01705b0e730dc8ba88021d108e261df541bbf45e324a4cff4f088`.
+Evidence: `artifacts/validation-0.1.4/`, including `satellite-preview.mp4`.
+No gateway deployment or remote push was required.
+
+## Original welcome and controls (0.1.3)
 
 The launch destination is now a welcome page with a native Canvas animation:
 six agent points orbit the PAX wordmark, with connecting lines, a light sweep,
