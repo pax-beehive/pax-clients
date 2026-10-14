@@ -12,6 +12,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,12 +27,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -103,9 +109,9 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
                         key(target.session_id) { SessionScreen(target, state, session, vm) }
                     else
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                "Select a session",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            WorkspaceEmptyState(
+                                "Your workspace, in focus",
+                                "Select a session to pick up where you left off.",
                             )
                         }
                 },
@@ -163,6 +169,7 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                     Modifier.widthIn(max = 440.dp).fillMaxWidth().padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    OrbitMark()
                     Text(
                         "PaxWorkspace",
                         style = MaterialTheme.typography.labelLarge,
@@ -182,7 +189,7 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (state.needsRegion) {
                         Text("Choose where to host your workspace")
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             WorkspaceButton(
                                 onClick = { vm.chooseRegion("us") },
                                 enabled = !state.working,
@@ -206,6 +213,12 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text("Sign in")
+                            Spacer(Modifier.width(12.dp))
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowForward,
+                                null,
+                                Modifier.size(18.dp),
+                            )
                         }
                         Text(
                             "Use your PaxWorkspace account in the browser.",
@@ -250,13 +263,17 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
     var filter by rememberSaveable { mutableStateOf("") }
     var project by rememberSaveable { mutableStateOf("") }
     var signOut by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(tab) { focusManager.clearFocus() }
+    BackHandler(enabled = tab in listOf("Projects", "Devices")) { tab = "Settings" }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         if (tab == "Home") "Workspace" else tab,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 },
                 navigationIcon = {
@@ -274,7 +291,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                containerColor = MaterialTheme.colorScheme.background,
                 tonalElevation = 0.dp,
             ) {
                 tabs.forEach { label ->
@@ -284,17 +301,36 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 (label == "Settings" && tab in listOf("Projects", "Devices")),
                         onClick = { tab = label },
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        colors =
+                            NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         icon = {
-                            Icon(
-                                when (label) {
-                                    "Home" -> Icons.Outlined.Home
-                                    "Devices" -> Icons.Outlined.Phone
-                                    "Approvals" -> Icons.Outlined.CheckCircle
-                                    "Settings" -> Icons.Outlined.Settings
-                                    else -> Icons.AutoMirrored.Outlined.List
-                                },
-                                null,
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (
+                                        label == "Approvals" &&
+                                            state.workspace.approvals.isNotEmpty()
+                                    )
+                                        Badge { Text(state.workspace.approvals.size.toString()) }
+                                }
+                            ) {
+                                Icon(
+                                    when (label) {
+                                        "Home" -> Icons.Outlined.Home
+                                        "Devices" -> WorkspaceSymbols.Computer
+                                        "Approvals" -> Icons.Outlined.CheckCircle
+                                        "Settings" -> Icons.Outlined.Settings
+                                        else -> Icons.AutoMirrored.Outlined.List
+                                    },
+                                    null,
+                                    Modifier.size(22.dp),
+                                )
+                            }
                         },
                     )
                 }
@@ -314,8 +350,30 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         OutlinedTextField(
                             filter,
                             { filter = it },
-                            label = { Text("Search sessions") },
+                            placeholder = { Text("Search sessions") },
+                            leadingIcon = {
+                                Icon(Icons.Outlined.Search, null, Modifier.size(20.dp))
+                            },
+                            trailingIcon = {
+                                if (filter.isNotEmpty())
+                                    IconButton(onClick = { filter = "" }) {
+                                        Icon(Icons.Outlined.Close, "Clear search")
+                                    }
+                            },
+                            shape = MaterialTheme.shapes.large,
+                            colors =
+                                OutlinedTextFieldDefaults.colors(
+                                    unfocusedContainerColor =
+                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                    focusedContainerColor =
+                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions =
+                                KeyboardActions(onSearch = { focusManager.clearFocus() }),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -330,8 +388,14 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            WorkspaceOutlinedButton(onClick = { tab = "Projects" }) {
+                            TextButton(onClick = { tab = "Projects" }) {
                                 Text("Projects")
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowForward,
+                                    null,
+                                    Modifier.size(16.dp),
+                                )
                             }
                         }
                     }
@@ -347,60 +411,29 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 (filter.isBlank() || it.title.contains(filter, true))
                         }
                     items(shown, key = { it.session_id }) { target ->
-                        Surface(
-                            onClick = { vm.open(target) },
-                            modifier = Modifier.fillMaxWidth(),
-                            color =
-                                if (state.selected?.session_id == target.session_id)
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
-                                else MaterialTheme.colorScheme.surfaceContainer,
-                            shape = MaterialTheme.shapes.large,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        ) {
-                            Row(
-                                Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Column(
-                                    Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Text(
-                                        target.title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        target.runtime_status.replace('_', ' '),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                    if (target.encrypted)
-                                        Text(
-                                            "End-to-end encrypted",
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    else if (target.preview.isNotBlank())
-                                        Text(
-                                            target.preview,
-                                            maxLines = 2,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
-                                }
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.ArrowForward,
-                                    null,
-                                    Modifier.size(20.dp),
-                                )
-                            }
-                        }
+                        SessionRow(
+                            target,
+                            state.selected?.session_id == target.session_id,
+                            state.workspace.projects
+                                .firstOrNull { it.project_id == target.primary_project_id }
+                                ?.display_name,
+                            onClick = {
+                                focusManager.clearFocus()
+                                vm.open(target)
+                            },
+                        )
                     }
                     if (shown.isEmpty() && !state.loading)
                         item {
-                            Text(
-                                "No sessions to show. Start a session from your workspace, then refresh."
+                            WorkspaceEmptyState(
+                                if (filter.isNotBlank() || project.isNotEmpty())
+                                    "No matching sessions"
+                                else "Ready when you are",
+                                if (filter.isNotBlank() || project.isNotEmpty())
+                                    "Try another search or choose a different project."
+                                else
+                                    "Start a session in your workspace, then refresh to continue it here.",
+                                icon = Icons.Outlined.Search,
                             )
                         }
                     if (state.workspace.hasMore)
@@ -414,85 +447,159 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         }
                 }
                 "Projects" -> {
+                    item { SectionLabel("YOUR PROJECTS") }
                     items(state.workspace.projects, key = { it.project_id }) { item ->
-                        ListItem(
-                            headlineContent = { Text(item.display_name) },
-                            trailingContent = {
-                                WorkspaceOutlinedButton(
-                                    onClick = {
-                                        project = item.project_id
-                                        tab = "Home"
-                                    }
-                                ) {
-                                    Text("Sessions")
-                                }
-                            },
-                        )
+                        SettingsRow(
+                            item.display_name,
+                            "View sessions",
+                            Icons.AutoMirrored.Outlined.List,
+                        ) {
+                            project = item.project_id
+                            tab = "Home"
+                        }
                     }
                     if (state.workspace.projects.isEmpty() && !state.loading)
-                        item { Text("No projects yet.") }
+                        item {
+                            WorkspaceEmptyState(
+                                "No projects yet",
+                                "Your workspace projects will appear here.",
+                            )
+                        }
                 }
                 "Devices" -> {
+                    item { SectionLabel("AGENT COMPUTERS") }
                     items(state.workspace.nodes, key = { it.node_id }) { item ->
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    item.name.ifBlank {
-                                        item.hostname.ifBlank { "Connected device" }
-                                    }
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(18.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    WorkspaceSymbols.Computer,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                            },
-                            supportingContent = {
-                                Text("${item.os} · ${if(item.online) "Online" else "Offline"}")
-                            },
-                        )
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        item.name.ifBlank {
+                                            item.hostname.ifBlank { "Connected device" }
+                                        },
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    StatusLabel(
+                                        listOf(item.os, if (item.online) "Online" else "Offline")
+                                            .filter { it.isNotBlank() }
+                                            .joinToString(" · "),
+                                        item.online,
+                                    )
+                                }
+                            }
+                        }
                     }
                     if (state.workspace.nodes.isEmpty() && !state.loading)
-                        item { Text("No connected devices yet.") }
+                        item {
+                            WorkspaceEmptyState(
+                                "No connected devices yet",
+                                "Computers running your agents will appear here.",
+                                icon = WorkspaceSymbols.Computer,
+                            )
+                        }
                 }
                 "Approvals" -> {
+                    if (state.workspace.approvals.isNotEmpty())
+                        item { SectionLabel("NEEDS YOUR ATTENTION") }
                     items(state.workspace.approvals, key = { it.approval_id }) { approval ->
                         ApprovalCard(approval, state.working) { option ->
                             vm.decide(approval, option)
                         }
                     }
                     if (state.workspace.approvals.isEmpty() && !state.loading)
-                        item { Text("No pending approvals.") }
+                        item {
+                            WorkspaceEmptyState(
+                                "You're all caught up",
+                                "No pending approvals.",
+                                icon = Icons.Outlined.CheckCircle,
+                            )
+                        }
                 }
                 "Settings" -> {
                     item {
-                        Text(
-                            "Workspace",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        WorkspaceOutlinedButton(
-                            onClick = { tab = "Devices" },
-                            modifier = Modifier.fillMaxWidth(),
+                        Surface(
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
                         ) {
-                            Text("Devices")
+                            Column(
+                                Modifier.fillMaxWidth().padding(22.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                ) {
+                                    Text(
+                                        state.credential!!.email.take(1).uppercase(),
+                                        Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                }
+                                Text(
+                                    state.credential!!.email,
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    "Account region · ${state.credential.region.uppercase()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
-                        WorkspaceOutlinedButton(
-                            onClick = { tab = "Projects" },
-                            modifier = Modifier.fillMaxWidth(),
+                    }
+                    item { SectionLabel("WORKSPACE") }
+                    item {
+                        SettingsRow(
+                            "Devices",
+                            "Computers running your agents",
+                            WorkspaceSymbols.Computer,
                         ) {
-                            Text("Projects")
+                            tab = "Devices"
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                     item {
-                        Text(state.credential!!.email, style = MaterialTheme.typography.titleMedium)
-                        Text("Account region: ${state.credential.region.uppercase()}")
+                        SettingsRow("Projects", "Browse your workspace", WorkspaceSymbols.Folder) {
+                            tab = "Projects"
+                        }
+                    }
+                    item { SectionLabel("ACCOUNT") }
+                    item {
+                        SettingsRow(
+                            "Sign out of this device",
+                            "Your agent sessions will keep running",
+                            WorkspaceSymbols.SignOut,
+                        ) {
+                            signOut = true
+                        }
                     }
                     item {
-                        Text(
-                            "PaxWorkspace for Android · ${BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    item {
-                        WorkspaceOutlinedButton(onClick = { signOut = true }) {
-                            Text("Sign out of this device")
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OrbitMark(Modifier.size(36.dp))
+                            Text(
+                                "PaxWorkspace for Android",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Version ${BuildConfig.VERSION_NAME}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -531,11 +638,20 @@ private fun ApprovalCard(
     onDecision: (ApprovalOption) -> Unit,
 ) {
     var selected by remember { mutableStateOf<ApprovalOption?>(null) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatusLabel(approval.status.ifBlank { "pending" }.replaceFirstChar { it.uppercase() })
             Text(approval.title, style = MaterialTheme.typography.titleMedium)
-            Text(approval.description)
-            Text(approval.status, style = MaterialTheme.typography.labelSmall)
+            if (approval.description.isNotBlank())
+                Text(
+                    approval.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             approval.options
                 .filter { it.option_id.isNotBlank() }
                 .forEach { option ->
@@ -606,7 +722,7 @@ private fun SessionScreen(
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        Text(session.connection, style = MaterialTheme.typography.labelSmall)
+                        StatusLabel(session.connection, session.connection == "Connected")
                     }
                 },
                 navigationIcon = {
@@ -630,39 +746,53 @@ private fun SessionScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         session.error?.let { ErrorNotice(it) }
-                        OutlinedTextField(
-                            draft,
-                            { draft = it },
-                            placeholder = { Text("Message your agent") },
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.fillMaxWidth(),
-                            maxLines = 6,
-                        )
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        Surface(
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         ) {
-                            if (session.busy)
-                                WorkspaceOutlinedButton(onClick = vm::stop) { Text("Stop") }
-                            WorkspaceButton(
-                                onClick = {
-                                    val text = draft
-                                    submitted = text
-                                    draft = ""
-                                    vm.send(text)
-                                },
-                                enabled =
-                                    draft.isNotBlank() &&
-                                        !session.busy &&
-                                        session.connection == "Connected",
+                            Row(
+                                Modifier.fillMaxWidth().padding(6.dp),
+                                verticalAlignment = Alignment.Bottom,
                             ) {
-                                Text("Send")
-                                Spacer(Modifier.width(8.dp))
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.ArrowForward,
-                                    null,
-                                    Modifier.size(18.dp),
+                                TextField(
+                                    draft,
+                                    { draft = it },
+                                    placeholder = { Text("Message your agent") },
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 6,
+                                    colors =
+                                        TextFieldDefaults.colors(
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent,
+                                            focusedIndicatorColor = Color.Transparent,
+                                            unfocusedIndicatorColor = Color.Transparent,
+                                        ),
                                 )
+                                FilledIconButton(
+                                    onClick = {
+                                        if (session.busy) vm.stop()
+                                        else {
+                                            val text = draft
+                                            submitted = text
+                                            draft = ""
+                                            vm.send(text)
+                                        }
+                                    },
+                                    enabled =
+                                        session.busy ||
+                                            (draft.isNotBlank() &&
+                                                session.connection == "Connected"),
+                                    modifier = Modifier.padding(bottom = 4.dp).size(48.dp),
+                                    shape = CircleShape,
+                                ) {
+                                    Icon(
+                                        if (session.busy) Icons.Outlined.Close
+                                        else WorkspaceSymbols.Send,
+                                        if (session.busy) "Stop" else "Send",
+                                        Modifier.size(24.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -723,7 +853,7 @@ private fun SessionScreen(
                 Modifier.padding(padding).fillMaxSize(),
                 state = list,
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 if (session.hasOlder)
                     item(key = "older") {
@@ -761,36 +891,61 @@ private fun MessageCard(message: ChatItem) {
     var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
     val collapsible = message.role in setOf("tool", "thought") || message.text.length > 12000
     val shown = if (collapsible && !expanded) message.text.take(600) else message.text
-    Surface(
-        color =
-            if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
-            else MaterialTheme.colorScheme.background,
-        shape = MaterialTheme.shapes.large,
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = if (message.role == "user") Alignment.End else Alignment.Start,
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(if (message.role == "user") 12.dp else 0.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (message.role in setOf("tool", "thought", "approval")) {
+        if (message.role == "assistant")
+            Row(
+                Modifier.padding(bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    WorkspaceSymbols.Agent,
+                    null,
+                    Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
-                    message.title.ifBlank {
-                        if (message.role == "thought") "Thinking" else "Activity"
-                    },
+                    "Agent",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (message.status.isNotBlank())
-                Text(
-                    message.status,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            SelectionContainer { MarkdownText(shown) }
-            if (collapsible)
-                WorkspaceOutlinedButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Collapse" else "Expand")
+        Surface(
+            modifier =
+                if (message.role == "user") Modifier.fillMaxWidth(.9f) else Modifier.fillMaxWidth(),
+            color =
+                if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
+                else MaterialTheme.colorScheme.background,
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(if (message.role == "user") 16.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (message.role in setOf("tool", "thought", "approval")) {
+                    Text(
+                        message.title.ifBlank {
+                            if (message.role == "thought") "Thinking" else "Activity"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                if (message.status.isNotBlank())
+                    Text(
+                        message.status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                SelectionContainer { MarkdownText(shown) }
+                if (collapsible)
+                    WorkspaceOutlinedButton(onClick = { expanded = !expanded }) {
+                        Text(if (expanded) "Collapse" else "Expand")
+                    }
+            }
         }
     }
 }

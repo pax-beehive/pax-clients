@@ -1,5 +1,12 @@
 # Android internal client
 
+## Visual refinement (0.1.11)
+
+The native workspace now has consistent neutral surfaces, clearer session rows,
+a compact conversation composer, grouped settings and contextual empty states.
+See [visual design and Mobbin references](android-visual-design.md).
+The Earth welcome/entry transition and client authentication model are preserved.
+
 Current 0.1.2 authentication and foldable status: [user login and foldables](android-user-login-foldables.md).
 The device-login implementation below is a historical 0.1.1 record and is removed.
 

@@ -24,6 +24,7 @@ class WorkspaceFlowTest {
     private val server = MockWebServer()
     @Volatile private var sent = false
     @Volatile private var decision = false
+    @Volatile private var gallery = false
 
     @Before
     fun setup() {
@@ -69,6 +70,17 @@ class WorkspaceFlowTest {
                             path.endsWith("/bootstrap") ->
                                 """{"status":"ready","user_id":"usr_test","email":"test@example.invalid","region":"us","api_url":"${server.url("/")}"}"""
 
+                            gallery && path.endsWith("/sessions") ->
+                                """{"sessions":[
+                                  {"session_id":"session_test","node_id":"node_test","agent_id":"agent_test","name":"Refine the Android experience","preview":"Reviewing navigation, spacing and the conversation flow.","runtime_status":"idle","primary_project_id":"project_test"},
+                                  {"session_id":"session_two","node_id":"node_test","agent_id":"agent_test","name":"Investigate streaming reconnects","preview":"Tracing the connection lifecycle across network changes.","runtime_status":"running","primary_project_id":"project_test"},
+                                  {"session_id":"session_three","node_id":"node_test","agent_id":"agent_test","name":"Prepare the next release","transport":"e2ee","runtime_status":"idle"}
+                                ]}"""
+                            gallery && path.endsWith("/history") ->
+                                """{"messages":[
+                                  {"message_id":"message_user","session_id":"session_test","turn_id":"turn_test","role":"user","session_seq":1,"parts":[{"part_index":0,"part_type":"text","text":"Review the Android layout and suggest the next steps."}]},
+                                  {"message_id":"message_agent","session_id":"session_test","turn_id":"turn_test","role":"assistant","session_seq":2,"parts":[{"part_index":0,"part_type":"text","text":"The navigation is in place. I checked the session list, conversation view and the expanded layout.\n\nNext, I’ll refine the spacing and make sure your draft stays in place when you fold the phone."}]}
+                                ],"pagination":{"has_older":false}}"""
                             path.endsWith("/sessions") ->
                                 """{"sessions":[{"session_id":"session_test","node_id":"node_test","agent_id":"agent_test","name":"Android integration session","runtime_status":"idle"}]}"""
                             path.endsWith("/history") ->
@@ -136,6 +148,8 @@ class WorkspaceFlowTest {
 
     private fun capture(name: String) {
         compose.waitForIdle()
+        // Platform IME/inset animations are outside Compose's idling clock.
+        android.os.SystemClock.sleep(600)
         val context = ApplicationProvider.getApplicationContext<Context>()
         val dir =
             File(context.externalMediaDirs.first(), "additional_test_output").apply { mkdirs() }
@@ -178,8 +192,8 @@ class WorkspaceFlowTest {
         awaitText("Inspect this project")
         compose.onNodeWithText("Inspect this project").assertIsDisplayed()
         awaitText("Connected")
-        compose.onNodeWithText("Send").assertIsEnabled()
-        compose.onNodeWithText("Send").performClick()
+        compose.onNodeWithContentDescription("Send").assertIsEnabled()
+        compose.onNodeWithContentDescription("Send").performClick()
         awaitText("Instruction received")
         capture("session")
         assertTrue(sent)
@@ -245,5 +259,81 @@ class WorkspaceFlowTest {
         compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()
         assertFalse(sent)
         capture("window-restored")
+    }
+
+    private fun shell(command: String) {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+        }
+    }
+
+    @Test
+    fun polishedNavigationSearchAndLargeTextStayUsable() {
+        gallery = true
+        shell("wm size 1080x2400")
+        try {
+            launch(true)
+            awaitText("Enter workspace")
+            compose.onNodeWithText("Enter workspace").performClick()
+            awaitText("Refine the Android experience")
+            capture("polish-home-compact")
+            compose.onNodeWithText("Search sessions").performTextInput("no such session")
+            awaitText("No matching sessions")
+            capture("polish-search-empty")
+            compose.onNodeWithContentDescription("Clear search").performClick()
+            awaitText("Refine the Android experience")
+            compose.onNodeWithText("Settings").performClick()
+            awaitText("test@example.invalid")
+            capture("polish-settings")
+            compose.onNodeWithText("Devices").performClick()
+            awaitText("Test workstation")
+            capture("polish-devices")
+            compose.onNodeWithContentDescription("Back to settings").performClick()
+            compose.onNodeWithText("Projects").performClick()
+            awaitText("Android project")
+            compose.onNodeWithText("Android project").performClick()
+            awaitText("Refine the Android experience")
+            compose.onNodeWithText("Prepare the next release").assertDoesNotExist()
+            compose.onNodeWithText("Show all projects").performClick()
+            awaitText("Prepare the next release")
+            compose.onNodeWithText("Approvals").performClick()
+            awaitText("Allow once")
+            capture("polish-approval")
+            compose.onNodeWithText("Home").performClick()
+            compose.onNodeWithText("Refine the Android experience").performClick()
+            awaitText("Review the Android layout and suggest the next steps.")
+            capture("polish-conversation")
+            compose
+                .onNodeWithText("Message your agent")
+                .performTextInput("Let’s start with the session list.")
+            compose.onNodeWithContentDescription("Send").assertIsEnabled()
+            capture("polish-composer-keyboard")
+            shell("input keyevent 4")
+            shell("wm size 2200x2480")
+            compose.waitUntil(15000) {
+                runCatching { compose.onNodeWithText("Search sessions").assertIsDisplayed() }
+                    .isSuccess
+            }
+            capture("polish-expanded")
+            shell("wm size 1080x2400")
+            shell("settings put system font_scale 1.5")
+            compose.waitUntil(15000) {
+                ApplicationProvider.getApplicationContext<Context>()
+                    .resources
+                    .configuration
+                    .fontScale > 1.4f
+            }
+            awaitText("Let’s start with the session list.")
+            compose.onNodeWithContentDescription("Send").assertIsDisplayed().assertIsEnabled()
+            capture("polish-large-text")
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Settings").performClick()
+            compose.onNodeWithText("Sign out of this device").performScrollTo().performClick()
+            awaitText("Sign out?")
+            compose.onNodeWithText("Cancel").performClick()
+        } finally {
+            shell("settings put system font_scale 1.0")
+            shell("wm size 2200x2480")
+        }
     }
 }
