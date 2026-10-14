@@ -1,6 +1,53 @@
 # Android welcome and controls
 
-## Earth-tracking solar system (0.1.8)
+## Coherent orbits and camera (0.1.9)
+
+Replaces the 0.1.8 independently compressed circles, inclinations and integer
+speeds with two-body elliptical propagation from the J2000 orbital elements in
+[JPL SSD Table 1](https://ssd.jpl.nasa.gov/planets/approx_pos.html). The Sun is at
+the heliocentric origin. All planets use the same elapsed time, distance unit
+(AU), ecliptic frame and Kepler period relationship. The camera follows Earth's
+position with a fixed inertial orientation and a nearby offset. Distant objects
+use a pinhole projection, are depth-sorted, and disappear when outside the
+viewport or behind the camera; they no longer fade against the hero text bounds.
+Their small inclinations and Earth-relative parallax determine apparent paths,
+including reversals, rather than hand-authored screen motion.
+
+This is an orbital illustration, not a live ephemeris or a true-scale sky:
+initial time is J2000 + 0.3 years, Earth uses the Earth-Moon barycentre, and
+secular evolution, perturbations and light travel time are omitted. A simulated
+year takes 120 seconds at system animation scale 1. Display radii alone are
+exaggerated (Sun about 12x, other distant planets about 300x); positions, orbital
+radii and relative periods are not compressed. There is no guarantee that every
+planet enters the view during a short visit. Earth remains a nearby close-up.
+
+Orbital time survives recreation, pauses when the welcome page is not resumed,
+honours disabled/scaled animations and has no 14-minute reset. Planet shadows
+now include the Sun-observer phase angle. When the Sun is behind Earth in the
+view, the Earth shader shows a dark hemisphere and lit rim, with restrained fill
+light to retain surface detail. API 26–32 still uses the previously documented
+fixed-light cached Earth; the live globe lighting is API 33+. Local satellites,
+foldable layouts and the signed-in approach remain in place.
+
+Validation: debug build, lint, all 31 JVM tests and all 9 isolated-emulator
+UI/rendering tests passed. Orbital checks cover perihelion/aphelion distances,
+variable speed and equal swept areas, period ratios, inclinations, a reference
+Earth position, camera depth/culling and continuity past the former reset.
+The new UI clock check covers pause/resume and saved-state restoration; the
+existing login routes, duplicate-entry guard, zoom, foldable draft retention
+and both Earth renderers also pass.
+
+Installed 0.1.9 (10) on Pixel with account data retained, and verified the
+installed APK SHA-256 against `artifacts/paxworkspace-android-0.1.9-debug.apk`:
+`eb0a84b7fa12efcce7f2d2a5c7136f8ba5f47e6b2f99aa4fa2345c1ce7e0ca41`.
+The phone remained locked, so this version has no new physical-device visual
+or frame-time acceptance. Reviewed compact/expanded captures and a full-cycle
+contact sheet from a 130-second recording: the Sun exits and returns from the
+other side, Earth passes through night/day, and distant bodies remain slower.
+Local evidence is in `artifacts/validation-0.1.9/`, including
+`orbit-full-cycle.mp4`, `orbit-preview.mp4` and `full-cycle-review.png`.
+
+## Earth-tracking solar system (0.1.8, superseded paths)
 
 The welcome camera now translates with Earth as it revolves around the Sun.
 Earth keeps the same screen position and apparent size while heliocentric

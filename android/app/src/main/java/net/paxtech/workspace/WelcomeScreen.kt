@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -29,6 +30,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import kotlin.math.sin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 private val spaceInk = Color(0xFF03070D)
 
@@ -62,7 +65,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
             } else arrival.snapTo(1f)
         }
     }
-    // Both animations follow the system animator scale, including reduced/disabled motion.
+    // Motion follows the system animator scale, including reduced/disabled motion.
     val phase: State<Float> =
         if (active) {
             rememberInfiniteTransition(label = "satellite drift")
@@ -73,16 +76,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                     label = "orbit time",
                 )
         } else remember { mutableFloatStateOf(0f) }
-    val solarPhase: State<Float> =
-        if (active) {
-            rememberInfiniteTransition(label = "solar system")
-                .animateFloat(
-                    0f,
-                    (Math.PI * 2).toFloat(),
-                    infiniteRepeatable(tween(840000, easing = LinearEasing)),
-                    label = "solar time",
-                )
-        } else remember { mutableFloatStateOf(0f) }
+    val solarYears = rememberSolarYears(active)
     Surface(
         Modifier.fillMaxSize().onGloballyPositioned { rootOrigin = it.positionInRoot() },
         color = spaceInk,
@@ -94,7 +88,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
             arrival.asState(),
             viewport = sceneBounds,
             approach = approach.asState(),
-            solarPhase = solarPhase,
+            solarYears = solarYears,
         )
         BoxWithConstraints(Modifier.safeDrawingPadding()) {
             val heroHeight = (maxHeight - 280.dp).coerceIn(220.dp, 490.dp)
@@ -262,4 +256,27 @@ private fun StarField(phase: State<Float>) {
             )
         }
     }
+}
+
+/**
+ * Saved, pauseable orbital time; the infinite-animation policy also supports Compose test clocks.
+ */
+@Composable
+internal fun rememberSolarYears(active: Boolean): State<Float> {
+    val solarYears = rememberSaveable { mutableFloatStateOf(0f) }
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
+        var previous: Long? = null
+        while (currentCoroutineContext().isActive) {
+            withInfiniteAnimationFrameNanos { now ->
+                val scale = coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f
+                val before = previous
+                if (before != null && scale > 0f) {
+                    solarYears.floatValue += ((now - before) / 120_000_000_000.0 / scale).toFloat()
+                }
+                previous = now
+            }
+        }
+    }
+    return solarYears
 }

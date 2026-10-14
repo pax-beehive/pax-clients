@@ -17,9 +17,10 @@ The 0.1.2 client uses PKCE, rotating user sessions and adaptive foldable panes.
 It no longer uses node/device login. See [user login and foldables](docs/android-user-login-foldables.md)
 for current verification and migration details. Prior 0.1.1 live Claude checks
 are historical and do not establish acceptance of the new authentication flow.
-Version 0.1.8 adds a solar-system scene viewed by a camera that follows Earth.
-The Sun and neighbouring planets move through the view, while satellites orbit
-Earth and signed-in entry zooms toward its surface; see
+Version 0.1.9 replaces the decorative solar paths with shared-time Keplerian
+orbits and an Earth-following perspective camera. Orbital distances are in AU;
+only disc sizes are enlarged for visibility. Satellites still orbit Earth,
+and signed-in entry zooms toward its surface; see
 [welcome and controls](docs/android-welcome.md).
 At the user's request, the project remains local; no remote has been created or pushed.
 
@@ -59,7 +60,7 @@ The last command uses the sibling `pax-console-workos` checkout, or a checkout
 path supplied as the first argument, to independently decrypt Android's generated
 synthetic test ciphertext using the existing web implementation.
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Current version: 0.1.8.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Current version: 0.1.9.
 Minimum OS: Android 8 / API 26. Application ID: `net.paxtech.workspace` (provisional).
 A browser capable of opening HTTPS links is required for account sign-in.
 

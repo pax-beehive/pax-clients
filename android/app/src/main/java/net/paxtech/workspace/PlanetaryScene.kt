@@ -47,7 +47,7 @@ internal fun PlanetaryScene(
     forceSoftware: Boolean = false,
     viewport: Rect? = null,
     approach: State<Float>? = null,
-    solarPhase: State<Float>? = null,
+    solarYears: State<Float>? = null,
 ) {
     val satellites = remember { (0..2).map(::satelliteMesh) }
     val planet = rememberPlanetPainter(forceSoftware)
@@ -57,7 +57,7 @@ internal fun PlanetaryScene(
         val frame = viewport ?: Rect(Offset.Zero, size)
         if (frame.width <= 0f || frame.height <= 0f) return@Canvas
         val flight = approach?.value ?: 0f
-        val solar = solarFrame(solarPhase?.value ?: 0f)
+        val solar = solarFrame(solarYears?.value ?: 0f)
         val restingUnit = min(frame.width, frame.height) / 4.95f * (0.86f + reveal * 0.14f)
         // Exponential dolly keeps the approach gentle initially and fills any screen aspect ratio.
         val destinationRadius = hypot(size.width, size.height) * 0.7f
@@ -68,7 +68,7 @@ internal fun PlanetaryScene(
             return origin + Offset(v.x, -v.y) * unit * perspective
         }
         val globeRadius = unit * 1.34f
-        drawSolarBackdrop(solar, origin, unit, frame, reveal * (1f - flight), time)
+        drawSolarBackdrop(solar, origin, unit, reveal * (1f - flight), time)
         drawCircle(
             Brush.radialGradient(
                 listOf(Color(0xFF183D66).copy(alpha = 0.20f * reveal), Color.Transparent),

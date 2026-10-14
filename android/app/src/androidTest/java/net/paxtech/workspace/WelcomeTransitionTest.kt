@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.material3.Text
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -74,6 +76,27 @@ class WelcomeTransitionTest {
         compose.mainClock.advanceTimeBy(1500)
         compose.onNodeWithText("Workspace destination").assertIsDisplayed()
         assertEquals(1, entries.intValue)
+    }
+
+    @Test
+    fun orbitalTimePausesAndSurvivesRestorationWithoutResetting() {
+        val active = mutableStateOf(true)
+        lateinit var years: State<Float>
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { years = rememberSolarYears(active.value) }
+        compose.mainClock.advanceTimeBy(1200)
+        val running = years.value
+        assertTrue(running > .009f && running < .011f)
+        compose.runOnIdle { active.value = false }
+        compose.mainClock.advanceTimeBy(32)
+        val paused = years.value
+        compose.mainClock.advanceTimeBy(2400)
+        assertEquals(paused, years.value, 0f)
+        restoration.emulateSavedInstanceStateRestore()
+        assertEquals(paused, years.value, 0f)
+        compose.runOnIdle { active.value = true }
+        compose.mainClock.advanceTimeBy(1200)
+        assertEquals(paused + .01f, years.value, .001f)
     }
 
     private fun capture(name: String) {

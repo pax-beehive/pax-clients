@@ -12,14 +12,13 @@ internal fun DrawScope.drawSolarBackdrop(
     frame: SolarFrame,
     origin: Offset,
     unit: Float,
-    bounds: Rect,
     alpha: Float,
     time: Float,
 ) {
     frame.bodies
         .sortedBy { it.position.z }
         .forEach { body ->
-            val p = projectSolarBody(body.position)
+            val p = projectSolarBody(body.position) ?: return@forEach
             val center = origin + Offset(p.x, p.y) * unit
             val radius = body.radius * p.scale * unit
             val extent = radius * if (body.kind == SolarKind.SUN) 5f else 2f
@@ -27,18 +26,10 @@ internal fun DrawScope.drawSolarBackdrop(
                 center.x + extent < 0 ||
                     center.x - extent > size.width ||
                     center.y + extent < 0 ||
-                    center.y - extent > bounds.bottom
+                    center.y - extent > size.height
             )
                 return@forEach
-            // Fade toward the text boundary, so no disc is abruptly sliced above the title.
-            val bodyExtent = radius * if (body.kind == SolarKind.SATURN) 1.8f else 1f
-            val visibility =
-                min(
-                        (bounds.bottom - center.y - bodyExtent) / (bodyExtent * 1.2f),
-                        (center.y - bounds.top - bodyExtent) / (bodyExtent * 1.2f),
-                    )
-                    .coerceIn(0f, 1f)
-            val opacity = alpha * visibility
+            val opacity = alpha
             if (opacity <= 0f) return@forEach
             if (body.kind == SolarKind.SUN) drawSun(center, radius, opacity, time)
             else drawPlanet(body.kind, center, radius, opacity, body.position, frame.earth)
@@ -185,15 +176,43 @@ private fun DrawScope.drawPlanet(
                 }
             }
         }
-        val sunX = -earth.x - position.x
-        val sunY = earth.y + position.y
-        val length = hypot(sunX, sunY).coerceAtLeast(.001f)
-        val highlight = center + Offset(sunX / length, sunY / length) * radius * .55f
+        // The terminator is the projection of a lit hemisphere, including the phase angle.
+        // A radial shadow alone makes every planet look half-lit regardless of the Sun.
+        val sx = -earth.x - position.x
+        val sy = -earth.y - position.y
+        val sz = -earth.z - position.z
+        val sunLength = sqrt(sx * sx + sy * sy + sz * sz)
+        val vx = -position.x
+        val vy = -position.y
+        val vz = .00017f - position.z
+        val viewLength = sqrt(vx * vx + vy * vy + vz * vz)
+        val phaseCos = ((sx * vx + sy * vy + sz * vz) / (sunLength * viewLength)).coerceIn(-1f, 1f)
+        val tangentX = sx / sunLength - phaseCos * vx / viewLength
+        val tangentY = -(sy / sunLength - phaseCos * vy / viewLength)
+        val angle = atan2(tangentY, tangentX)
+        fun surfacePoint(x: Float, y: Float): Offset =
+            center +
+                Offset(x * cos(angle) - y * sin(angle), x * sin(angle) + y * cos(angle)) * radius
+        val night =
+            Path().apply {
+                for (step in 0..64) {
+                    val y = -1f + step / 32f
+                    val p = surfacePoint(-sqrt((1f - y * y).coerceAtLeast(0f)), y)
+                    if (step == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+                }
+                for (step in 64 downTo 0) {
+                    val y = -1f + step / 32f
+                    val p = surfacePoint(-phaseCos * sqrt((1f - y * y).coerceAtLeast(0f)), y)
+                    lineTo(p.x, p.y)
+                }
+                close()
+            }
+        drawPath(night, Color(0xFF02050A).copy(alpha = alpha * .88f))
         drawCircle(
             Brush.radialGradient(
-                listOf(Color.Transparent, Color(0xFF030712).copy(alpha = alpha * .90f)),
-                highlight,
-                radius * 1.5f,
+                listOf(Color.Transparent, Color.Black.copy(alpha = alpha * .32f)),
+                center,
+                radius,
             ),
             radius,
             center,
