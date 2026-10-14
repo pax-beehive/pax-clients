@@ -1,6 +1,37 @@
 # Android welcome and controls
 
-## Satellite arrival (0.1.4)
+## Planetary system (0.1.5)
+
+The central subject is now a blue-green rotating planet. Four spacecraft travel
+on independent inclined orbital planes, with different directions, speeds,
+phases and sizes. The models include a communications satellite with a dish,
+an observation satellite with an optical instrument, and a compact CubeSat
+with long antenna booms. Perspective changes their apparent size with depth.
+
+Far-side tracks, particles and spacecraft render first, then the opaque planet,
+then near-side tracks and spacecraft. This lets the planet hide satellites
+passing behind it. Land patches rotate on the sphere and clip at the horizon.
+Each orbital speed is an integer multiple of the shared animation cycle so
+positions stay continuous at the loop boundary. The existing entry routing,
+system-motion settings and dark system splash are retained.
+
+Debug build, lint, 25 JVM tests and all 3 UI tests passed. The initial UI run
+timed out waiting for a draft after immediate activity recreation; the test now
+asserts that input is displayed before requesting recreation, and the complete
+suite passed with the original post-recreation checks intact. Initial failure
+logs are retained separately in the local evidence folder. Reviewed compact and
+expanded screenshots and a 12-second recording showing multiple orbital positions.
+Land contours are combined into one shaded draw to avoid per-cell draw calls.
+
+Installed 0.1.5 (6) on the USB-connected Pixel 11 Pro Fold without clearing account
+data, and matched the installed APK hash. The phone was locked; physical-device
+visual acceptance remains for the user. No backend deployment or remote push.
+
+Artifact: `artifacts/paxworkspace-android-0.1.5-debug.apk`.
+SHA-256: `e019293044de08582c6131f1ef275f1811a8b1f7e98e2346f40cbc0e6e364d11`.
+Evidence: `artifacts/validation-0.1.5/`, including `planetary-preview.mp4`.
+
+## Satellite arrival (0.1.4, superseded composition)
 
 The welcome scene now shows a shaded satellite with twin solar arrays, a metal
 bus, a recessed communication dish and an antenna. Native Canvas projects a

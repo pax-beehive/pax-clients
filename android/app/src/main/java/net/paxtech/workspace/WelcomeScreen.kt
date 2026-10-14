@@ -83,7 +83,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                         .fillMaxWidth()
                         .height(if (short) 250.dp else 340.dp)
                 ) {
-                    SatelliteScene(phase, arrival.asState())
+                    PlanetaryScene(phase, arrival.asState())
                 }
                 Column(
                     Modifier.graphicsLayer {

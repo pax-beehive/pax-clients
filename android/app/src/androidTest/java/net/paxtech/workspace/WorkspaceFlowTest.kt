@@ -172,6 +172,8 @@ class WorkspaceFlowTest {
         compose.onNodeWithText("Android integration session").performClick()
         awaitText("Hello from the test agent")
         compose.onNodeWithText("Message your agent").performTextInput("Inspect this project")
+        // Wait for the edit to reach the composition before requesting state saving.
+        compose.onNodeWithText("Inspect this project").assertIsDisplayed()
         scenario!!.recreate()
         awaitText("Inspect this project")
         compose.onNodeWithText("Inspect this project").assertIsDisplayed()
