@@ -73,6 +73,16 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                     label = "orbit time",
                 )
         } else remember { mutableFloatStateOf(0f) }
+    val solarPhase: State<Float> =
+        if (active) {
+            rememberInfiniteTransition(label = "solar system")
+                .animateFloat(
+                    0f,
+                    (Math.PI * 2).toFloat(),
+                    infiniteRepeatable(tween(840000, easing = LinearEasing)),
+                    label = "solar time",
+                )
+        } else remember { mutableFloatStateOf(0f) }
     Surface(
         Modifier.fillMaxSize().onGloballyPositioned { rootOrigin = it.positionInRoot() },
         color = spaceInk,
@@ -84,6 +94,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
             arrival.asState(),
             viewport = sceneBounds,
             approach = approach.asState(),
+            solarPhase = solarPhase,
         )
         BoxWithConstraints(Modifier.safeDrawingPadding()) {
             val heroHeight = (maxHeight - 280.dp).coerceIn(220.dp, 490.dp)

@@ -47,6 +47,7 @@ internal fun PlanetaryScene(
     forceSoftware: Boolean = false,
     viewport: Rect? = null,
     approach: State<Float>? = null,
+    solarPhase: State<Float>? = null,
 ) {
     val satellites = remember { (0..2).map(::satelliteMesh) }
     val planet = rememberPlanetPainter(forceSoftware)
@@ -56,6 +57,7 @@ internal fun PlanetaryScene(
         val frame = viewport ?: Rect(Offset.Zero, size)
         if (frame.width <= 0f || frame.height <= 0f) return@Canvas
         val flight = approach?.value ?: 0f
+        val solar = solarFrame(solarPhase?.value ?: 0f)
         val restingUnit = min(frame.width, frame.height) / 4.95f * (0.86f + reveal * 0.14f)
         // Exponential dolly keeps the approach gentle initially and fills any screen aspect ratio.
         val destinationRadius = hypot(size.width, size.height) * 0.7f
@@ -66,6 +68,7 @@ internal fun PlanetaryScene(
             return origin + Offset(v.x, -v.y) * unit * perspective
         }
         val globeRadius = unit * 1.34f
+        drawSolarBackdrop(solar, origin, unit, frame, reveal * (1f - flight), time)
         drawCircle(
             Brush.radialGradient(
                 listOf(Color(0xFF183D66).copy(alpha = 0.20f * reveal), Color.Transparent),
@@ -124,6 +127,7 @@ internal fun PlanetaryScene(
                         orbit.heading,
                         reveal,
                         orbit.color,
+                        solar.sunlight,
                     )
                     // Tapered wake is brighter near the spacecraft, faint at its far end.
                     repeat(18) { step ->
@@ -145,7 +149,15 @@ internal fun PlanetaryScene(
         satellitePass(false)
         if (planet != null) {
             drawIntoCanvas {
-                planet.draw(it.nativeCanvas, origin.x, origin.y, globeRadius, time, reveal)
+                planet.draw(
+                    it.nativeCanvas,
+                    origin.x,
+                    origin.y,
+                    globeRadius,
+                    time,
+                    reveal,
+                    solar.sunlight,
+                )
             }
         } else {
             drawCircle(
@@ -171,7 +183,10 @@ private fun DrawScope.drawSpacecraft(
     roll: Float,
     alpha: Float,
     accent: Color,
+    sunlight: Vector3,
 ) {
+    val length = sqrt(sunlight.x * sunlight.x + sunlight.y * sunlight.y + sunlight.z * sunlight.z)
+    val lightDirection = Vector3(sunlight.x / length, -sunlight.y / length, sunlight.z / length)
     fun rotate(v: Vector3): Vector3 {
         val yaw = angle + 0.4f
         val x = v.x * cos(yaw) + v.z * sin(yaw)
@@ -200,9 +215,10 @@ private fun DrawScope.drawSpacecraft(
             val light =
                 (0.22f +
                         0.78f *
-                            (-normal.x * 0.55f + normal.y * 0.45f + normal.z * 0.65f).coerceAtLeast(
-                                0f
-                            ))
+                            (normal.x * lightDirection.x +
+                                    normal.y * lightDirection.y +
+                                    normal.z * lightDirection.z)
+                                .coerceAtLeast(0f))
                     .coerceIn(0.22f, 1f)
             val color = face.color
             val spec = max(0f, -normal.x * 0.3f + normal.y * 0.3f + normal.z * 0.9f).pow(14) * 0.35f

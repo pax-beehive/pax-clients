@@ -1,5 +1,47 @@
 # Android welcome and controls
 
+## Earth-tracking solar system (0.1.8)
+
+The welcome camera now translates with Earth as it revolves around the Sun.
+Earth keeps the same screen position and apparent size while heliocentric
+positions for the Sun, Mercury, Venus, Mars, Jupiter and Saturn are transformed
+into Earth-relative coordinates. Perspective makes neighbouring bodies grow
+and shrink as they cross the view. Local satellite orbits and the signed-in
+zoom transition remain centred on Earth.
+
+This is a cinematic model, not an astronomical ephemeris: sizes, distances,
+inclinations and periods are compressed, and the distant-body layer is kept
+behind the enlarged Earth focal subject. Earth completes a revolution in 84
+seconds; all orbital phases close continuously at the 14-minute master-loop
+boundary. No solar-system orbit lines or labels are added to the interface.
+
+The Sun has a warm corona and a textured surface. Jupiter has cloud bands and
+a storm, Saturn has separated front/back rings, and rocky planets have surface
+detail. Bodies fade near the hero's vertical edges so they do not obscure
+branding or entry text. The Earth shader and spacecraft lighting follow the
+Sun's direction; restrained fill light keeps the night side readable. API
+26–32 retains the cached still Earth and its fixed lighting, while the Sun,
+neighbouring planets and satellites still move. No network assets are used.
+
+Validation: a clean debug build, lint and all 28 JVM tests passed. Three new
+model checks cover the Earth-relative camera, neighbours crossing the viewing
+field, and continuity at the master-loop boundary. All 8 emulator UI/rendering
+tests passed, including signed-in zoom, signed-out routing, restored entry,
+foldable resize/draft retention and the older-Android rendering fallback.
+An intermediate concurrent build damaged disposable dex intermediates; the
+final build was rebuilt cleanly and the complete UI suite rerun serially.
+Initial emulator recording also showed stalls under host contention, so it is
+not evidence of physical-device frame rate.
+
+Installed 0.1.8 (9) on the Pixel without clearing its account, and matched its
+APK hash. The phone remained locked; this version has no new physical-device
+playback or frame-time measurement. Artifact:
+`artifacts/paxworkspace-android-0.1.8-debug.apk`, SHA-256:
+`f9c17a23121f62321728b881a2fb6293f9b5a9cd9f612ef2b6766914df1e1566`.
+Review captures and test results are in `artifacts/validation-0.1.8/`.
+The final emulator preview is `solar-preview.mp4`; earlier review material is
+kept separately in `initial/`. Local work only; no remote push or backend change.
+
 ## Enter through the planet (0.1.7)
 
 For a restored signed-in account, **Enter workspace** now starts a 1.05-second

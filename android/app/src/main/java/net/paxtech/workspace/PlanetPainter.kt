@@ -18,7 +18,15 @@ import kotlinx.coroutines.withContext
 
 /** One GPU draw for the sphere; older Android releases use a cached, shaded still. */
 internal interface PlanetPainter {
-    fun draw(canvas: Canvas, x: Float, y: Float, radius: Float, time: Float, alpha: Float)
+    fun draw(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        radius: Float,
+        time: Float,
+        alpha: Float,
+        sunlight: Vector3 = Vector3(-.72f, -.47f, .48f),
+    )
 }
 
 @Composable
@@ -65,11 +73,13 @@ internal class ShaderPlanetPainter(fields: Bitmap) : PlanetPainter {
         radius: Float,
         time: Float,
         alpha: Float,
+        sunlight: Vector3,
     ) {
         shader.setFloatUniform("origin", x, y)
         shader.setFloatUniform("radius", radius)
         shader.setFloatUniform("time", time)
         shader.setFloatUniform("opacity", alpha)
+        shader.setFloatUniform("lightDirection", sunlight.x, sunlight.y, sunlight.z)
         canvas.drawRect(
             x - radius * 1.28f,
             y - radius * 1.28f,
@@ -91,6 +101,7 @@ private class BitmapPlanetPainter(private val bitmap: Bitmap) : PlanetPainter {
         radius: Float,
         time: Float,
         alpha: Float,
+        sunlight: Vector3,
     ) {
         paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
         destination.set(
@@ -110,6 +121,7 @@ uniform float2 origin;
 uniform float radius;
 uniform float time;
 uniform float opacity;
+uniform float3 lightDirection;
 uniform shader geography;
 uniform float2 mapSize;
 float hash(float3 p) {
@@ -135,7 +147,7 @@ float3 turn(float3 n, float a) {
 half4 main(float2 position) {
     float2 p=(position-origin)/radius;
     float rr=dot(p,p), distance=sqrt(rr);
-    float3 light=normalize(float3(-0.72,-0.47,0.48));
+    float3 light=normalize(lightDirection);
     if(distance>1.0) {
         float glow=exp(-(distance-1.0)*38.0)*0.40+exp(-(distance-1.0)*13.0)*0.045;
         glow*=0.25+0.75*max(0.0,dot(normalize(float3(p,0.15)),light));
@@ -156,11 +168,11 @@ half4 main(float2 position) {
     albedo=mix(albedo,float3(0.7,0.79,0.83),snow);
     float sunlight=dot(n,light);
     float daylight=smoothstep(-0.17,0.35,sunlight);
-    float3 color=albedo*(0.06+1.35*max(0.0,sunlight));
+    float3 color=albedo*(0.28+1.10*max(0.0,sunlight));
     float3 cloudWorld=turn(n,time+0.04);
     float clouds=fields(cloudWorld).b;
     float veil=smoothstep(0.50,0.69,clouds)*0.90;
-    color=mix(color,float3(0.86,0.91,0.98)*(0.07+0.95*max(0.0,sunlight)),veil);
+    color=mix(color,float3(0.86,0.91,0.98)*(0.22+0.82*max(0.0,sunlight)),veil);
     float spec=pow(max(0.0,dot(reflect(-light,n),float3(0,0,1))),48.0);
     color+=float3(0.54,0.70,0.8)*spec*0.48*(1.0-land)*(1.0-veil);
     float cities=smoothstep(0.72,0.86,noise(world*150.0))*smoothstep(0.48,0.63,mountain);
