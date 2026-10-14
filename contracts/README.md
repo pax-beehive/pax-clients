@@ -48,29 +48,35 @@ cursor boundaries, and tamper rejection. Use synthetic keys only; fixed nonces
 are permitted in deterministic test vectors only. Never copy user histories,
 tokens, credentials, or production key material into this repository.
 
-## Android user-device login
+## Android user login (0.1.2)
 
-Additional authoritative source inspected: `paxl/internal/facade/auth_regional.go`
-and `auth.go`. Regional API origins are `https://api.paxworkspace.net` and
-`https://hk-api.paxworkspace.net`.
+The client is a user-facing peer of Web, not a registered node. Authoritative
+sources are `pax-manager-android-native/workers/region-directory/src/native-client.ts`
+and the official WorkOS public-client PKCE protocol:
+https://workos.com/docs/sdks/android and https://github.com/workos/workos-android.
 
-- `POST /api/v1/paxl/device-login/start` with `protocol: client_commit_v1`.
-- `POST /api/v1/paxl/device-login/poll` with login ID, poll token, action, and
-  expected user ID. Actions: inspect, commit, ack, cancel.
-- `GET /api/v1/user/self/me` identifies the user API credential owner.
-- `DELETE /api/v1/user/self/api-keys/:key_id` revokes this app's credential.
+- AuthKit authorization uses `provider=authkit`, S256 PKCE and a random state.
+- The registered HTTPS redirect is `https://paxworkspace.net/auth/callback`.
+  Native-prefixed states relay only code/state or error/state to the fixed
+  `net.paxtech.workspace://auth/callback` URI. Web cookie login is unchanged.
+- Code and refresh grants go directly to WorkOS `/user_management/authenticate`
+  with the public client ID. No client secret is included in the APK.
+- Access tokens remain in memory. The rotating refresh token, pending verifier
+  and account metadata use Android Keystore-backed encrypted storage.
+- `POST /api/v1/native/client/bootstrap` resolves the verified WorkOS subject to
+  the existing user/region. Only an unassigned user chooses a region. No node or
+  user API key is issued.
+- REST/SSE `/api/v1/user/self/...` paths use the base
+  `https://paxworkspace.net/api/v1/native/client/` with the first `/api/v1/` stripped.
+  The gateway verifies WorkOS JWT signatures and forwards the existing signed
+  user assertion and server-only Access credentials to the assigned Manager.
+- `POST /api/v1/native/client/logout` revokes the verified WorkOS session.
+- Old native `/{us|hk}/paxl/device-login/*` paths return 410. The old key route
+  remains only for legacy compatibility and the upgrade's own-key revocation.
 
-Android reaches these contracts through the canonical native gateway:
-`https://paxworkspace.net/api/v1/native/{us|hk}/`. It replaces the initial
-`/api/v1/` prefix with this gateway base. The Worker forwards only allowlisted
-routes to the selected region, using server-side Access credentials; Manager
-still validates the user bearer credential. No Node Key is accepted as a user
-credential. `/api/pax` remains the browser gateway prefix.
-
-Gateway source: `pax-manager-android-native/workers/region-directory/src/native.ts`,
-local commits `1de3456` and `59428fd`. Start responses use the canonical
-`https://paxworkspace.net/paxl-login.html` confirmation page, including HK starts.
-The Android client retains strict verification-host validation.
+0.1.1 reused paxl device login, which created an offline node; that was an
+incorrect domain model. Its commit/ack flow is not the current client contract.
+E2EE key approval remains distinct from account login and node enrollment.
 
 Synthetic WebCrypto fixtures: `android/app/src/test/resources/web-vectors.json`.
 The fixture includes deliberately public test keys, never account data. Tests

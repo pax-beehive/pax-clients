@@ -2,12 +2,15 @@ package net.paxtech.workspace
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.android.EntryPointAccessors
 import java.io.File
+import java.util.Base64
 import kotlinx.coroutines.runBlocking
 import net.paxtech.workspace.data.*
 import okhttp3.mockwebserver.*
@@ -24,6 +27,11 @@ class WorkspaceFlowTest {
 
     @Before
     fun setup() {
+        org.junit.Assume.assumeTrue(
+            "Fixture tests require the isolated integration emulator",
+            Build.HARDWARE in listOf("ranchu", "goldfish") &&
+                InstrumentationRegistry.getArguments().getString("paxFixtureTests") == "true",
+        )
         val context = ApplicationProvider.getApplicationContext<Context>()
         vault = SecureVault(context)
         runBlocking { vault.update { VaultData() } }
@@ -47,6 +55,20 @@ class WorkspaceFlowTest {
                     }
                     val data =
                         when {
+                            path.endsWith("/authenticate") -> {
+                                val claims =
+                                    "{\"sub\":\"user_fixture\",\"exp\":${System.currentTimeMillis() / 1000 + 300}}"
+                                val jwt =
+                                    "e30." +
+                                        Base64.getUrlEncoder()
+                                            .withoutPadding()
+                                            .encodeToString(claims.toByteArray()) +
+                                        ".signature"
+                                """{"access_token":"$jwt","refresh_token":"rotated","user":{"id":"user_fixture"}}"""
+                            }
+                            path.endsWith("/bootstrap") ->
+                                """{"status":"ready","user_id":"usr_test","email":"test@example.invalid","region":"us","api_url":"${server.url("/")}"}"""
+
                             path.endsWith("/sessions") ->
                                 """{"sessions":[{"session_id":"session_test","node_id":"node_test","agent_id":"agent_test","name":"Android integration session","runtime_status":"idle"}]}"""
                             path.endsWith("/history") ->
@@ -71,12 +93,17 @@ class WorkspaceFlowTest {
                 }
             }
         server.start()
+        EntryPointAccessors.fromApplication(context, TestAuthEntryPoint::class.java).auth().apply {
+            providerOrigin = server.url("/").toString().removeSuffix("/")
+            gatewayOrigin = providerOrigin
+            apiOrigin = server.url("/").toString()
+        }
     }
 
     @After
     fun cleanup() {
         scenario?.close()
-        runBlocking { vault.update { VaultData() } }
+        if (::vault.isInitialized) runBlocking { vault.update { VaultData() } }
         server.shutdown()
     }
 
@@ -90,10 +117,11 @@ class WorkspaceFlowTest {
                                 server.url("/").toString(),
                                 "usr_test",
                                 "test@example.invalid",
-                                "paxu_test",
-                                "key_test",
+                                "",
+                                "",
                                 "us",
-                            )
+                            ),
+                        userSession = UserSession("user_fixture", "fixture_refresh"),
                     )
                 }
             }
@@ -136,6 +164,11 @@ class WorkspaceFlowTest {
         compose.onNodeWithText("Android integration session").performClick()
         awaitText("Hello from the test agent")
         compose.onNodeWithText("Message your agent").performTextInput("Inspect this project")
+        scenario!!.recreate()
+        awaitText("Inspect this project")
+        compose.onNodeWithText("Inspect this project").assertIsDisplayed()
+        awaitText("Connected")
+        compose.onNodeWithText("Send").assertIsEnabled()
         compose.onNodeWithText("Send").performClick()
         awaitText("Instruction received")
         capture("session")
@@ -151,5 +184,52 @@ class WorkspaceFlowTest {
         awaitText("No pending approvals.")
         compose.onNodeWithText("Home").performClick()
         awaitText("Android integration session")
+    }
+
+    @Test
+    fun preservesDraftAndSelectionAcrossWindowResizeAndRecreation() {
+        fun resize(expanded: Boolean) {
+            val dimensions = if (expanded) "2200x2480" else "1080x2400"
+            InstrumentationRegistry.getInstrumentation()
+                .uiAutomation
+                .executeShellCommand("wm size $dimensions")
+                .use { descriptor ->
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).readBytes()
+                }
+            compose.waitUntil(15000) {
+                val width =
+                    ApplicationProvider.getApplicationContext<Context>()
+                        .resources
+                        .configuration
+                        .screenWidthDp
+                if (expanded) width >= 720 else width < 720
+            }
+            if (scenario != null)
+                compose.waitUntil(15000) {
+                    runCatching { compose.onNodeWithText("Search sessions").assertIsDisplayed() }
+                        .isSuccess == expanded
+                }
+        }
+        resize(true)
+        launch(true)
+        awaitText("Android integration session")
+        compose.onNodeWithText("Android integration session").performClick()
+        awaitText("Hello from the test agent")
+        compose.onNodeWithText("Message your agent").performTextInput("Keep my draft while folding")
+        capture("window-expanded")
+        compose.onNodeWithText("Search sessions").assertIsDisplayed()
+        resize(false)
+        awaitText("Keep my draft while folding")
+        compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()
+        compose.onNodeWithText("Search sessions").assertIsNotDisplayed()
+        capture("window-compact")
+        resize(true)
+        awaitText("Keep my draft while folding")
+        compose.onNodeWithText("Search sessions").assertIsDisplayed()
+        scenario!!.recreate()
+        awaitText("Keep my draft while folding")
+        compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()
+        assertFalse(sent)
+        capture("window-restored")
     }
 }

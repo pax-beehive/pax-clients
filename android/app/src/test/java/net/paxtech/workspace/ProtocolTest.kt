@@ -6,7 +6,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
-import net.paxtech.workspace.auth.DeviceLogin
 import net.paxtech.workspace.crypto.*
 import net.paxtech.workspace.data.*
 import net.paxtech.workspace.network.*
@@ -26,7 +25,7 @@ class MemoryVault(var value: VaultData = VaultData()) : Vault {
 
 class ProtocolTest {
     @Test
-    fun routesNativeRequestsThroughRegionalGateway() {
+    fun routesUserRequestsThroughNativeGateway() {
         val api = PaxApi()
         assertEquals(
             "https://paxworkspace.net/api/v1/native/hk/user/self/sessions?page_num=2",
@@ -38,64 +37,11 @@ class ProtocolTest {
                 .toString(),
         )
         assertEquals(
-            "https://paxworkspace.net/api/v1/native/us/paxl/device-login/start",
-            api.url(
-                    "https://paxworkspace.net/api/v1/native/us/",
-                    listOf("api", "v1", "paxl", "device-login", "start"),
-                )
-                .toString(),
+            "https://paxworkspace.net/api/v1/native/client/user/self/me",
+            api.url("https://paxworkspace.net/api/v1/native/client/", userPath("me")).toString(),
         )
         assertThrows(IllegalArgumentException::class.java) {
             api.url("https://other.example.invalid/api/v1/native/us/", userPath("me"))
-        }
-    }
-
-    @Test
-    fun reportsGatewayFailureInsteadOfHidingItAsConnectivity() = runBlocking {
-        MockWebServer().use { server ->
-            server.enqueue(
-                MockResponse()
-                    .setResponseCode(302)
-                    .setHeader("Location", "https://access.example.invalid/login")
-            )
-            val failure =
-                runCatching {
-                        DeviceLogin(PaxApi(), MemoryVault())
-                            .start(listOf("us" to server.url("/").toString()))
-                    }
-                    .exceptionOrNull()
-            assertTrue(failure!!.message!!.contains("HTTP 302"))
-            assertEquals(1, server.requestCount)
-        }
-    }
-
-    @Test
-    fun startsRegionalLoginAndRetainsWorkingRegionWhenOtherIsUnavailable() = runBlocking {
-        MockWebServer().use { us ->
-            MockWebServer().use { hk ->
-                us.enqueue(MockResponse().setResponseCode(503))
-                hk.enqueue(
-                    response(
-                        body(
-                            "protocol" to "client_commit_v1",
-                            "region" to "hk",
-                            "verification_uri" to "https://paxworkspace.net/paxl-login.html",
-                            "login_id" to "login_fixture",
-                            "poll_token" to "poll_fixture",
-                            "user_code" to "ABC123",
-                        )
-                    )
-                )
-                val vault = MemoryVault()
-                val attempt =
-                    DeviceLogin(PaxApi(), vault)
-                        .start(
-                            listOf("us" to us.url("/").toString(), "hk" to hk.url("/").toString())
-                        )
-                assertEquals("https://paxworkspace.net/paxl-login.html?hk_code=ABC123", attempt.url)
-                assertEquals("hk", attempt.candidates.single().region)
-                assertEquals(attempt, vault.value.login)
-            }
         }
     }
 
@@ -241,129 +187,6 @@ class ProtocolTest {
             assertEquals(fixture.text("root"), vault.value.keys.single().encoded)
             assertTrue(vault.value.pairings.isEmpty())
             assertTrue(server.takeRequest().path!!.contains("key_epoch=1"))
-        }
-    }
-
-    @Test
-    fun pinsLoginIdentityAndSavesBeforeAcknowledgement() = runBlocking {
-        MockWebServer().use { server ->
-            val c = credential(server)
-            val candidate =
-                LoginCandidate(c.origin, "us", "login_fixture", "ABC123", "poll_fixture", 2)
-            val vault =
-                MemoryVault(
-                    VaultData(
-                        login =
-                            LoginAttempt(
-                                listOf(candidate),
-                                "https://paxworkspace.net/paxl-login.html",
-                                Long.MAX_VALUE,
-                            )
-                    )
-                )
-            val user = body("user_id" to c.userId, "email" to c.email)
-            server.enqueue(
-                response(
-                    buildJsonObject {
-                        put("status", "confirmed")
-                        put("region", "us")
-                        put("user", user)
-                    }
-                )
-            )
-            server.enqueue(
-                response(
-                    buildJsonObject {
-                        put("status", "approved")
-                        put("region", "us")
-                        put("user", user)
-                        put("api_key", c.apiKey)
-                        put("api_key_meta", body("key_id" to c.keyId))
-                    }
-                )
-            )
-            server.enqueue(response(body("status" to "consumed")))
-            val result = DeviceLogin(PaxApi(), vault).finish()
-            assertEquals(c, result)
-            assertNull(vault.value.login)
-            val calls =
-                (1..3).map {
-                    wireJson.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
-                }
-            assertEquals(listOf("", "commit", "ack"), calls.map { it.text("action") })
-            assertEquals(c.userId, calls[1].text("expected_user_id"))
-        }
-    }
-
-    @Test
-    fun rejectsCredentialFromDifferentIdentity() = runBlocking {
-        MockWebServer().use { server ->
-            val c = credential(server)
-            val candidate =
-                LoginCandidate(c.origin, "us", "login_fixture", "ABC123", "poll_fixture", 2)
-            val vault =
-                MemoryVault(
-                    VaultData(
-                        login =
-                            LoginAttempt(
-                                listOf(candidate),
-                                "https://paxworkspace.net/paxl-login.html",
-                                Long.MAX_VALUE,
-                                candidate,
-                                c.userId,
-                                c.email,
-                            )
-                    )
-                )
-            server.enqueue(
-                response(
-                    buildJsonObject {
-                        put("status", "approved")
-                        put("region", "us")
-                        put("user", body("user_id" to "other", "email" to c.email))
-                        put("api_key", "wrong")
-                        put("api_key_meta", body("key_id" to "wrong"))
-                    }
-                )
-            )
-            try {
-                DeviceLogin(PaxApi(), vault).finish()
-                fail("Identity mismatch accepted")
-            } catch (_: IllegalStateException) {}
-            assertNull(vault.value.credential)
-            assertEquals(1, server.requestCount)
-        }
-    }
-
-    @Test
-    fun resumesReceiptWithoutIssuingAnotherCredential() = runBlocking {
-        MockWebServer().use { server ->
-            val c = credential(server)
-            val candidate =
-                LoginCandidate(c.origin, "us", "login_fixture", "ABC123", "poll_fixture", 2)
-            val vault =
-                MemoryVault(
-                    VaultData(
-                        c,
-                        LoginAttempt(
-                            listOf(candidate),
-                            "https://paxworkspace.net/paxl-login.html",
-                            Long.MAX_VALUE,
-                            candidate,
-                            c.userId,
-                            c.email,
-                        ),
-                    )
-                )
-            server.enqueue(response(body("status" to "consumed")))
-            assertEquals(c, DeviceLogin(PaxApi(), vault).finish())
-            assertEquals(
-                "ack",
-                wireJson
-                    .parseToJsonElement(server.takeRequest().body.readUtf8())
-                    .jsonObject
-                    .text("action"),
-            )
         }
     }
 

@@ -30,7 +30,6 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
     private val timeline = Timeline()
     private val mutex = Mutex()
     private var session: AgentSession? = null
-    private var credential: Credential? = null
     private var root: RootKey? = null
     private var cursor = 0L
     private var before = 0L
@@ -43,27 +42,28 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
     private fun route(suffix: String) =
         userPath("agents", session!!.agent_id, "sessions", session!!.session_id, suffix)
 
-    private fun request(
+    private suspend fun request(
         path: List<String>,
         query: Map<String, String> = emptyMap(),
         method: String = "GET",
         body: JsonObject? = null,
         headers: Map<String, String> = emptyMap(),
-    ) =
-        repo.api.request(
-            credential!!.origin,
+    ): okhttp3.Request {
+        val credential = repo.credential()
+        return repo.api.request(
+            credential.origin,
             path,
-            credential!!.apiKey,
+            credential.apiKey,
             method,
             body,
             query,
             headers,
         )
+    }
 
     suspend fun run(target: AgentSession) = coroutineScope {
         require(target.transport in setOf("manager", "e2ee")) { "Unsupported session transport" }
         session = target
-        credential = repo.credential()
         root = if (target.encrypted) pairing.key(target.agent_id) else null
         nativeId = target.native_id
         requestId = null
@@ -77,7 +77,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
             mutable.value = SessionState(locked = target.encrypted && root == null)
         }
         if (target.encrypted && root == null) {
-            mutable.update { it.copy(connection = "Device authorization required") }
+            mutable.update { it.copy(connection = "Encryption key approval required") }
             return@coroutineScope
         }
         val publisher = launch {

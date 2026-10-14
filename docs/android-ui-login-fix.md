@@ -1,5 +1,9 @@
 # Android UI and native gateway integration
 
+Historical 0.1.1 record. The device-login contract and test commands below were
+superseded by [0.1.2 user login and foldables](android-user-login-foldables.md).
+Do not use old fixture commands on a real-account emulator.
+
 ## UI
 
 Android now uses the existing Console's neutral palette (canvas #262626,

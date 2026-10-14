@@ -1,5 +1,8 @@
 # Android internal client
 
+Current 0.1.2 authentication and foldable status: [user login and foldables](android-user-login-foldables.md).
+The device-login implementation below is a historical 0.1.1 record and is removed.
+
 Date: 2026-10-13. See [UI and login integration](android-ui-login-fix.md) for
 the subsequent visual redesign and production gateway fix. This supersedes the initial Android-only limitations in
 `verification.md`; that document records the earlier preparation stage.

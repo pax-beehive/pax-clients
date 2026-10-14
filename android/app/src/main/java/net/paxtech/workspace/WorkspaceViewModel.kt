@@ -7,7 +7,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
-import net.paxtech.workspace.auth.DeviceLogin
+import net.paxtech.workspace.auth.UserAuth
 import net.paxtech.workspace.crypto.DevicePairing
 import net.paxtech.workspace.data.*
 import net.paxtech.workspace.session.SessionRuntime
@@ -15,7 +15,8 @@ import net.paxtech.workspace.session.SessionRuntime
 data class WorkspaceState(
     val loading: Boolean = true,
     val credential: Credential? = null,
-    val login: LoginAttempt? = null,
+    val login: OAuthPending? = null,
+    val needsRegion: Boolean = false,
     val workspace: Workspace = Workspace(),
     val error: String? = null,
     val selected: AgentSession? = null,
@@ -29,7 +30,7 @@ class WorkspaceViewModel
 @Inject
 constructor(
     private val vault: Vault,
-    private val auth: DeviceLogin,
+    private val auth: UserAuth,
     private val repo: WorkspaceRepository,
     private val pairingService: DevicePairing,
     private val runtime: SessionRuntime,
@@ -42,20 +43,29 @@ constructor(
     private var loginJob: Job? = null
     private var refreshJob: Job? = null
     private var monitorJob: Job? = null
+    private var restoreJob: Job? = null
+    private var foreground = false
 
     init {
-        launchAction {
+        restoreJob = launchAction {
+            val credential = auth.restore()
             val saved = vault.read()
             mutable.update {
-                it.copy(credential = saved.credential, login = saved.login, loading = false)
+                it.copy(
+                    credential = credential,
+                    login = saved.oauth,
+                    needsRegion = credential == null && saved.userSession != null,
+                    loading = false,
+                )
             }
-            if (saved.login != null) pollLogin() else if (saved.credential != null) refresh()
+            if (credential != null) refresh()
         }
     }
 
     fun setForeground(value: Boolean) {
+        if (foreground == value) return
+        foreground = value
         if (value) {
-            if (state.value.login != null) pollLogin()
             if (state.value.credential != null && state.value.login == null) {
                 refresh()
                 reconnect()
@@ -84,7 +94,6 @@ constructor(
                     }
         } else {
             readJob?.cancel()
-            loginJob?.cancel()
             refreshJob?.cancel()
             monitorJob?.cancel()
         }
@@ -97,8 +106,16 @@ constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                val saved = vault.read()
                 mutable.update {
-                    it.copy(error = e.message ?: "Request failed", loading = false, working = false)
+                    it.copy(
+                        error = e.message ?: "Request failed",
+                        loading = false,
+                        working = false,
+                        login = saved.oauth,
+                        credential = if (saved.userSession == null) null else it.credential,
+                        needsRegion = saved.userSession != null && saved.credential == null,
+                    )
                 }
             }
         }
@@ -109,18 +126,38 @@ constructor(
         launchAction {
             val attempt = auth.start()
             mutable.update { it.copy(login = attempt, working = false) }
-            pollLogin()
         }
     }
 
-    fun pollLogin() {
+    fun completeLogin(callback: String) {
         if (loginJob?.isActive == true) return
         loginJob = launchAction {
-            val credential = auth.finish()
+            restoreJob?.join()
+            mutable.update { it.copy(working = true, error = null) }
+            val credential = auth.finish(callback)
             mutable.update {
-                it.copy(credential = credential, login = null, error = null, loading = false)
+                it.copy(
+                    credential = credential,
+                    login = null,
+                    error = null,
+                    loading = false,
+                    working = false,
+                    needsRegion = credential == null,
+                )
             }
-            refresh()
+            if (credential != null) refresh()
+        }
+    }
+
+    fun chooseRegion(region: String) {
+        if (state.value.working) return
+        mutable.update { it.copy(working = true, error = null) }
+        launchAction {
+            val credential = auth.bootstrap(region)
+            mutable.update {
+                it.copy(credential = credential, needsRegion = credential == null, working = false)
+            }
+            if (credential != null) refresh()
         }
     }
 

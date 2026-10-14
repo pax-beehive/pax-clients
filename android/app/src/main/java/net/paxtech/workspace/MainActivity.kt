@@ -1,5 +1,6 @@
 package net.paxtech.workspace
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -19,5 +20,17 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent { WorkspaceTheme { WorkspaceShell(viewModel) } }
+        if (savedInstanceState == null) handleLogin(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLogin(intent)
+    }
+
+    private fun handleLogin(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) intent.dataString?.let(viewModel::completeLogin)
+        intent.data = null
     }
 }

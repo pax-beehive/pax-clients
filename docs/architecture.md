@@ -43,27 +43,31 @@ The region-directory Worker implements `/auth/login`, `/auth/callback`,
 `/auth/session`, and `/auth/logout`. It stores the PKCE verifier in an encrypted
 browser transaction cookie and returns an encrypted HttpOnly session cookie.
 The browser gateway authenticates that cookie before regional API routing.
-That cookie flow remains separate from native user-key authorization.
+That cookie flow remains separate from the native WorkOS bearer session.
 
-## Android authentication choice after source inspection
+## Android user authentication (0.1.2)
 
-The Android implementation reuses the existing user-device login protocol from
-`paxl/internal/facade/auth_regional.go`, `client_commit_v1`. This is a user API
-credential, not a paxd Node Key. The app creates regional login candidates, opens
-the existing WorkOS-backed browser confirmation page, pins the confirmed user,
-commits one candidate, saves the credential before acknowledgement, and cancels
-the other candidate. Sign-out revokes this app's API-key ID.
+Android and Web use the same WorkOS identity and regional account directory.
+Android uses public-client S256 PKCE and its own rotating user session; browser
+cookies stay in the browser. The registered HTTPS callback relays only a code
+and state to a fixed Android callback. Account login never registers a node.
 
-Browser cookies remain in the browser. The native gateway at
-`/api/v1/native/{us|hk}/` now explicitly supports the existing Manager user-key
-contract. Access service credentials stay in the Worker, while Manager validates
-the key and resource permissions. Start responses normalize browser confirmation
-to the canonical WorkOS site. No WorkOS secret is stored in the app.
+UserAuth owns serialized refresh and Keystore persistence. The repository and
+session runtime obtain current access tokens through it. The native user gateway
+verifies WorkOS JWTs and attaches the same signed identity assertion used by Web.
+Regional Access service credentials remain server-side. See
+[user login and foldables](android-user-login-foldables.md) for exact verification.
 
-User API keys are revocable credentials; they do not have an implemented OAuth
-refresh-token cycle. Production start/poll and authorization boundaries are
-verified from Android, as are real-account confirmation and ordinary-session
-Claude message round trips. Live encrypted-session verification remains open. See [current integration evidence](android-ui-login-fix.md).
+The prior paxl device-login implementation was removed because its credential
+issuance transaction also created an offline node. Old own-key revocation is
+retained as an upgrade migration, not as a login option.
+
+## Foldable presentation
+
+WindowManager supplies separating hinge geometry; available window width selects
+single-pane or list/detail presentation. Both panes retain their composition
+identity across layout transitions. A configuration change preserves the active
+ViewModel and does not restart the stream. Real backgrounding does suspend it.
 
 ## Encryption and streaming
 

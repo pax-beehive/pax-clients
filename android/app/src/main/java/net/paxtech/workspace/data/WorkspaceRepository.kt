@@ -4,11 +4,21 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import net.paxtech.workspace.auth.UserAuth
 import net.paxtech.workspace.network.*
 
 @Singleton
-class WorkspaceRepository @Inject constructor(val api: PaxApi, private val vault: Vault) {
-    suspend fun credential() = vault.read().credential ?: error("Sign in to continue")
+class WorkspaceRepository
+private constructor(val api: PaxApi, private val readCredential: suspend () -> Credential) {
+    @Inject constructor(api: PaxApi, auth: UserAuth) : this(api, auth::credential)
+
+    // Protocol fixtures supply a local vault without contacting the identity provider.
+    internal constructor(
+        api: PaxApi,
+        vault: Vault,
+    ) : this(api, { vault.read().credential ?: error("Sign in to continue") })
+
+    suspend fun credential() = readCredential()
 
     suspend fun get(vararg path: String, query: Map<String, String> = emptyMap()): JsonElement {
         val c = credential()

@@ -50,7 +50,12 @@ class PaxApi @Inject constructor() {
                 (base.encodedPath == "/" ||
                     (base.isHttps &&
                         base.host == "paxworkspace.net" &&
-                        base.encodedPath in setOf("/api/v1/native/us/", "/api/v1/native/hk/"))) &&
+                        base.encodedPath in
+                            setOf(
+                                "/api/v1/native/us/",
+                                "/api/v1/native/hk/",
+                                "/api/v1/native/client/",
+                            ))) &&
                 base.query == null &&
                 base.fragment == null
         )

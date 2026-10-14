@@ -77,7 +77,19 @@ data class VaultData(
     val login: LoginAttempt? = null,
     val keys: List<RootKey> = emptyList(),
     val pairings: List<Pairing> = emptyList(),
+    val oauth: OAuthPending? = null,
+    val userSession: UserSession? = null,
 )
+
+@Serializable
+data class OAuthPending(
+    val state: String,
+    val verifier: String,
+    val url: String,
+    val expiresAt: Long,
+)
+
+@Serializable data class UserSession(val subject: String, val refreshToken: String)
 
 @Serializable
 data class AgentSession(

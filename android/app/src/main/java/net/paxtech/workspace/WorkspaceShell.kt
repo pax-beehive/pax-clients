@@ -1,8 +1,8 @@
 package net.paxtech.workspace
 
 import android.content.ClipData
+import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,7 +32,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.compose.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,42 +45,42 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
+    val activity = androidx.activity.compose.LocalActivity.current
+    DisposableEffect(lifecycle, activity) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) vm.setForeground(true)
-            if (event == Lifecycle.Event.ON_STOP) vm.setForeground(false)
+            if (event == Lifecycle.Event.ON_STOP && activity?.isChangingConfigurations != true)
+                vm.setForeground(false)
         }
         lifecycle.addObserver(observer)
-        vm.setForeground(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) vm.setForeground(true)
         onDispose {
             lifecycle.removeObserver(observer)
-            vm.setForeground(false)
+            if (activity?.isChangingConfigurations != true) vm.setForeground(false)
         }
-    }
-    val nav = rememberNavController()
-    LaunchedEffect(state.selected?.session_id) {
-        if (state.selected != null && nav.currentDestination?.route != "session")
-            nav.navigate("session")
-        if (state.selected == null && nav.currentDestination?.route == "session") nav.popBackStack()
     }
     if (state.credential == null || state.login != null) {
         LoginScreen(state, vm)
         return
     }
-    NavHost(navController = nav, startDestination = "workspace") {
-        composable("workspace") { WorkspaceHome(state, vm) }
-        composable("session") {
-            androidx.activity.compose.BackHandler { vm.close() }
-            state.selected?.let { SessionScreen(it, state, session, vm) }
-        }
-    }
+    BackHandler(enabled = state.selected != null) { vm.close() }
+    AdaptiveWorkspace(
+        selected = state.selected != null,
+        home = { WorkspaceHome(state, vm) },
+        detail = {
+            val target = state.selected
+            if (target != null) key(target.session_id) { SessionScreen(target, state, session, vm) }
+            else
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Select a session", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+        },
+    )
 }
 
 @Composable
 private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
     val context = LocalContext.current
-    val clipboard = LocalClipboard.current
-    val copyScope = rememberCoroutineScope()
     var opened by rememberSaveable { mutableStateOf("") }
     var browserError by remember { mutableStateOf<String?>(null) }
     fun launchBrowser(url: String) {
@@ -145,7 +144,24 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                     Spacer(Modifier.height(8.dp))
                     if (state.loading || state.working)
                         LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (state.login == null) {
+                    if (state.needsRegion) {
+                        Text("Choose where to host your workspace")
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            WorkspaceButton(
+                                onClick = { vm.chooseRegion("us") },
+                                enabled = !state.working,
+                            ) {
+                                Text("United States")
+                            }
+                            WorkspaceOutlinedButton(
+                                onClick = { vm.chooseRegion("hk") },
+                                enabled = !state.working,
+                            ) {
+                                Text("Hong Kong")
+                            }
+                        }
+                        TextButton(onClick = vm::signOut) { Text("Use another account") }
+                    } else if (state.login == null) {
                         WorkspaceButton(
                             onClick = vm::startLogin,
                             enabled = !state.working && !state.loading,
@@ -159,49 +175,18 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        Text("Confirm sign-in in your browser, then return here.")
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainer,
-                            shape = MaterialTheme.shapes.medium,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        ) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                state.login.candidates.forEach {
-                                    Text(
-                                        "${it.region.uppercase()}: ${it.code}",
-                                        fontFamily = FontFamily.Monospace,
-                                    )
-                                }
-                            }
-                        }
+                        Text(
+                            "Finish signing in with your PaxWorkspace account. You will return here automatically."
+                        )
                         WorkspaceButton(
                             onClick = { launchBrowser(state.login.url) },
+                            enabled = !state.working,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Open sign-in page")
+                            Text("Continue in browser")
                         }
-                        TextButton(
-                            onClick = {
-                                copyScope.launch {
-                                    clipboard.setClipEntry(
-                                        ClipEntry(
-                                            ClipData.newPlainText(
-                                                "PaxWorkspace sign-in",
-                                                state.login.url,
-                                            )
-                                        )
-                                    )
-                                }
-                            }
-                        ) {
-                            Text("Copy link to use another browser")
-                        }
-                        Row {
-                            TextButton(onClick = vm::pollLogin) { Text("Check sign-in") }
-                            TextButton(onClick = vm::cancelLogin) { Text("Cancel") }
+                        TextButton(onClick = vm::cancelLogin, enabled = !state.working) {
+                            Text("Cancel")
                         }
                     }
                     (state.error ?: browserError)?.let { ErrorNotice(it) }
@@ -613,14 +598,15 @@ private fun SessionScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
-                    Text("Authorize this device", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "This session is encrypted. Confirm access on the computer running this agent."
+                        "Enable encrypted session access",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        "You are signed in. This encrypted session also requires approval of this client’s encryption key on the agent’s computer."
                     )
                 }
-                item {
-                    WorkspaceButton(onClick = vm::beginPairing) { Text("Prepare authorization") }
-                }
+                item { WorkspaceButton(onClick = vm::beginPairing) { Text("Request key access") } }
                 state.pairing?.let { pending ->
                     item {
                         Text("Run this command on your agent's computer:")
@@ -639,7 +625,7 @@ private fun SessionScreen(
                                     clipboard.setClipEntry(
                                         ClipEntry(
                                             ClipData.newPlainText(
-                                                "Device authorization",
+                                                "Encryption key approval",
                                                 vm.pairingCommand(pending),
                                             )
                                         )
@@ -647,9 +633,9 @@ private fun SessionScreen(
                                 }
                             }
                         ) {
-                            Text("Copy authorization command")
+                            Text("Copy key approval command")
                         }
-                        WorkspaceButton(onClick = vm::finishPairing) { Text("Check authorization") }
+                        WorkspaceButton(onClick = vm::finishPairing) { Text("Check key access") }
                     }
                 }
                 state.error?.let { item { ErrorNotice(it) } }
