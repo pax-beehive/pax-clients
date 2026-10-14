@@ -57,7 +57,56 @@ class PlanetRenderingTest {
         assertLitSphere(capture("planet-fallback"))
     }
 
-    private fun showPlanet(software: Boolean, time: State<Float>) {
+    @Test
+    fun shaderNightShowsRealCitiesInsteadOfLitTerrain() {
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 33)
+        assertNightAndDay(false)
+    }
+
+    @Test
+    fun fallbackAlsoSwitchesToCityLightsAtNight() {
+        assertNightAndDay(true)
+    }
+
+    private fun assertNightAndDay(software: Boolean) {
+        val light = mutableStateOf(Vector3(0f, 0f, -1f))
+        showPlanet(software, mutableFloatStateOf(0f), light)
+        val prefix = if (software) "fallback" else "shader"
+        val night = capture("earth-$prefix-night")
+        fun mean(bitmap: Bitmap): Double {
+            var total = 0L
+            var count = 0
+            for (y in bitmap.height / 4 until bitmap.height * 3 / 4) {
+                for (x in bitmap.width / 4 until bitmap.width * 3 / 4) {
+                    total += android.graphics.Color.red(bitmap.getPixel(x, y))
+                    count++
+                }
+            }
+            return total.toDouble() / count
+        }
+        var lights = 0
+        var dark = 0
+        var samples = 0
+        for (y in night.height / 4 until night.height * 3 / 4) {
+            for (x in night.width / 4 until night.width * 3 / 4) {
+                val red = android.graphics.Color.red(night.getPixel(x, y))
+                if (red > 45) lights++
+                if (red < 12) dark++
+                samples++
+            }
+        }
+        assertTrue("City networks must remain visible at night", lights > 100)
+        assertTrue("Unlit geography must stay dark", dark > samples * .75)
+        compose.runOnIdle { light.value = Vector3(0f, 0f, 1f) }
+        val day = capture("earth-$prefix-day")
+        assertTrue("Sunlight must illuminate the real surface", mean(day) > mean(night) * 3)
+    }
+
+    private fun showPlanet(
+        software: Boolean,
+        time: State<Float>,
+        light: State<Vector3> = mutableStateOf(Vector3(-.72f, -.47f, .48f)),
+    ) {
         var ready = false
         compose.setContent {
             val painter = rememberPlanetPainter(forceSoftware = software)
@@ -73,6 +122,7 @@ class PlanetRenderingTest {
                             size.minDimension * .35f,
                             time.value,
                             1f,
+                            light.value,
                         )
                     }
                 }
@@ -85,7 +135,8 @@ class PlanetRenderingTest {
     private fun capture(name: String): Bitmap {
         val bitmap = compose.onNodeWithTag("planet").captureToImage().asAndroidBitmap()
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val folder = File(context.externalMediaDirs.first(), "additional_test_output").apply { mkdirs() }
+        val folder =
+            File(context.externalMediaDirs.first(), "additional_test_output").apply { mkdirs() }
         File(folder, "$name.png").outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }

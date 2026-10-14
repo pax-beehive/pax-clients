@@ -1,13 +1,7 @@
 package net.paxtech.workspace
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.BitmapShader
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.RuntimeShader
-import android.graphics.Shader
+import android.content.Context
+import android.graphics.*
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.*
@@ -16,7 +10,7 @@ import kotlin.math.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** One GPU draw for the sphere; older Android releases use a cached, shaded still. */
+/** A single GPU sphere, with a cached-texture, dynamic day/night fallback before API 33. */
 internal interface PlanetPainter {
     fun draw(
         canvas: Canvas,
@@ -29,39 +23,67 @@ internal interface PlanetPainter {
     )
 }
 
+internal data class EarthTextures(val day: Bitmap, val night: Bitmap, val clouds: Bitmap)
+
+internal fun loadEarthTextures(context: Context): EarthTextures {
+    fun load(name: String): Bitmap {
+        val options =
+            BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+                inSampleSize = 1
+            }
+        context.assets.open(name).use { BitmapFactory.decodeStream(it, null, options) }
+        options.inJustDecodeBounds = false
+        // Bound transient decode memory, then keep at most a 2048 x 1024 texture on the GPU.
+        while (options.outWidth / options.inSampleSize > 4096) options.inSampleSize *= 2
+        val decoded =
+            context.assets.open(name).use { BitmapFactory.decodeStream(it, null, options)!! }
+        if (decoded.width <= 2048) return decoded
+        return Bitmap.createScaledBitmap(decoded, 2048, 1024, true).also { decoded.recycle() }
+    }
+    return EarthTextures(load("earth-day.jpg"), load("earth-night.jpg"), load("earth-clouds.jpg"))
+}
+
 @Composable
 internal fun rememberPlanetPainter(forceSoftware: Boolean = false): PlanetPainter? {
     val context = LocalContext.current.applicationContext
     val painter by
         produceState<PlanetPainter?>(null, forceSoftware) {
-            val fields =
-                withContext(Dispatchers.IO) {
-                    context.assets.open("planet-fields.png").use {
-                        BitmapFactory.decodeStream(it)!!
-                    }
-                }
+            val textures = withContext(Dispatchers.IO) { loadEarthTextures(context) }
             value =
-                if (Build.VERSION.SDK_INT >= 33 && !forceSoftware) {
-                    ShaderPlanetPainter(fields)
-                } else
+                if (Build.VERSION.SDK_INT >= 33 && !forceSoftware) ShaderPlanetPainter(textures)
+                else
                     withContext(Dispatchers.Default) {
-                        BitmapPlanetPainter(bakePlanet(fields, 512))
+                        val result =
+                            BitmapPlanetPainter(
+                                bakeEarth(textures, 512, false),
+                                bakeEarth(textures, 512, true),
+                            )
+                        textures.day.recycle()
+                        textures.night.recycle()
+                        textures.clouds.recycle()
+                        result
                     }
         }
     return painter
 }
 
 @RequiresApi(33)
-internal class ShaderPlanetPainter(fields: Bitmap) : PlanetPainter {
+internal class ShaderPlanetPainter(textures: EarthTextures) : PlanetPainter {
     private val shader =
         RuntimeShader(PLANET_SHADER).apply {
-            setInputBuffer(
-                "geography",
-                BitmapShader(fields, Shader.TileMode.REPEAT, Shader.TileMode.CLAMP).apply {
-                    setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
-                },
-            )
-            setFloatUniform("mapSize", fields.width.toFloat(), fields.height.toFloat())
+            fun bind(name: String, bitmap: Bitmap) {
+                setInputBuffer(
+                    name,
+                    BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.CLAMP).apply {
+                        setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
+                    },
+                )
+                setFloatUniform(name + "Size", bitmap.width.toFloat(), bitmap.height.toFloat())
+            }
+            bind("dayMap", textures.day)
+            bind("nightMap", textures.night)
+            bind("cloudMap", textures.clouds)
         }
     private val paint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = this@ShaderPlanetPainter.shader }
@@ -81,18 +103,74 @@ internal class ShaderPlanetPainter(fields: Bitmap) : PlanetPainter {
         shader.setFloatUniform("opacity", alpha)
         shader.setFloatUniform("lightDirection", sunlight.x, sunlight.y, sunlight.z)
         canvas.drawRect(
-            x - radius * 1.28f,
-            y - radius * 1.28f,
-            x + radius * 1.28f,
-            y + radius * 1.28f,
+            x - radius * 1.15f,
+            y - radius * 1.15f,
+            x + radius * 1.15f,
+            y + radius * 1.15f,
             paint,
         )
     }
 }
 
-private class BitmapPlanetPainter(private val bitmap: Bitmap) : PlanetPainter {
+private const val PLANET_SHADER =
+    """
+uniform float2 origin;
+uniform float radius;
+uniform float time;
+uniform float opacity;
+uniform float3 lightDirection;
+uniform shader dayMap;
+uniform shader nightMap;
+uniform shader cloudMap;
+uniform float2 dayMapSize;
+uniform float2 nightMapSize;
+uniform float2 cloudMapSize;
+float2 coordinates(float3 n, float rotation) {
+    float3 tilted=float3(n.x,n.y*cos(0.28)-n.z*sin(0.28),n.y*sin(0.28)+n.z*cos(0.28));
+    float a=1.6-rotation; // Prograde spin: surface features move eastward.
+    float3 w=float3(tilted.x*cos(a)+tilted.z*sin(a),tilted.y,-tilted.x*sin(a)+tilted.z*cos(a));
+    return float2(atan(w.x,w.z)/6.2831853+0.5,asin(clamp(w.y,-1.0,1.0))/3.1415927+0.5);
+}
+half4 main(float2 position) {
+    float2 p=(position-origin)/radius;
+    float rr=dot(p,p), distance=sqrt(rr);
+    float3 light=normalize(lightDirection);
+    if(distance>1.0) {
+        float sun=max(0.0,dot(normalize(float3(p,0.08)),light));
+        float glow=(exp(-(distance-1.0)*65.0)*0.26+exp(-(distance-1.0)*22.0)*0.025)*(0.035+sun);
+        float a=glow*opacity*(1.0-smoothstep(1.08,1.15,distance));
+        return half4(float3(0.22,0.52,1.0)*a,a);
+    }
+    float3 n=float3(p,sqrt(max(0.0,1.0-rr)));
+    float2 uv=coordinates(n,time);
+    float3 albedo=dayMap.eval(uv*dayMapSize).rgb;
+    float incidence=dot(n,light);
+    float day=max(0.0,incidence);
+    float night=1.0-smoothstep(-0.12,0.06,incidence);
+    float clouds=cloudMap.eval(coordinates(n,time+0.008)*cloudMapSize).r;
+    float veil=pow(clouds,1.35)*0.86;
+    float3 color=albedo*(0.006+1.12*day);
+    color=mix(color,float3(0.89,0.94,1.0)*(0.003+1.04*day),veil);
+    float lamp=nightMap.eval(uv*nightMapSize).r;
+    float cities=pow(max(0.0,lamp-0.012),0.65)*1.45;
+    color+=float3(1.0,0.69,0.34)*cities*night*(1.0-veil*0.65);
+    // Ocean glints only where the blue albedo indicates water, never on the unlit hemisphere.
+    float water=smoothstep(0.015,0.045,albedo.b-max(albedo.r,albedo.g));
+    float spec=pow(max(0.0,dot(reflect(-light,n),float3(0,0,1))),60.0);
+    color+=float3(0.45,0.61,0.8)*spec*water*(1.0-veil)*day*0.35;
+    float rim=pow(1.0-n.z,4.0);
+    color+=float3(0.10,0.30,0.68)*rim*(0.012+0.65*smoothstep(-0.10,0.35,incidence));
+    float a=(1.0-smoothstep(0.996,1.0,distance))*opacity;
+    return half4(clamp(color,0.0,1.0)*a,a);
+}
+"""
+
+/** Static geography on older GPUs, with a moving solar terminator and real night-light texture. */
+private class BitmapPlanetPainter(private val day: Bitmap, private val night: Bitmap) :
+    PlanetPainter {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val destination = RectF()
+    private val terminator = Path()
 
     override fun draw(
         canvas: Canvas,
@@ -103,143 +181,82 @@ private class BitmapPlanetPainter(private val bitmap: Bitmap) : PlanetPainter {
         alpha: Float,
         sunlight: Vector3,
     ) {
+        destination.set(x - radius, y - radius, x + radius, y + radius)
         paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
-        destination.set(
-            x - radius * 1.28f,
-            y - radius * 1.28f,
-            x + radius * 1.28f,
-            y + radius * 1.28f,
-        )
-        canvas.drawBitmap(bitmap, null, destination, paint)
-    }
-}
-
-// Baked seamless fields keep per-frame work bounded: sphere projection, two samples and lighting.
-private const val PLANET_SHADER =
-    """
-uniform float2 origin;
-uniform float radius;
-uniform float time;
-uniform float opacity;
-uniform float3 lightDirection;
-uniform shader geography;
-uniform float2 mapSize;
-float hash(float3 p) {
-    p = fract(p * 0.1031);
-    p += dot(p, p.yzx + 33.33);
-    return fract((p.x + p.y) * p.z);
-}
-float noise(float3 p) {
-    float3 i = floor(p), f = fract(p);
-    f = f*f*(3.0-2.0*f);
-    return mix(mix(mix(hash(i),hash(i+float3(1,0,0)),f.x),
-                   mix(hash(i+float3(0,1,0)),hash(i+float3(1,1,0)),f.x),f.y),
-               mix(mix(hash(i+float3(0,0,1)),hash(i+float3(1,0,1)),f.x),
-                   mix(hash(i+float3(0,1,1)),hash(i+float3(1,1,1)),f.x),f.y),f.z);
-}
-float3 fields(float3 world) {
-    float2 uv=float2(atan(world.x,world.z)/6.2831853+0.5,asin(clamp(world.y,-1.0,1.0))/3.1415927+0.5);
-    return geography.eval(uv*mapSize).rgb;
-}
-float3 turn(float3 n, float a) {
-    return float3(n.x*cos(a)+n.z*sin(a), n.y, -n.x*sin(a)+n.z*cos(a));
-}
-half4 main(float2 position) {
-    float2 p=(position-origin)/radius;
-    float rr=dot(p,p), distance=sqrt(rr);
-    float3 light=normalize(lightDirection);
-    if(distance>1.0) {
-        float glow=exp(-(distance-1.0)*38.0)*0.40+exp(-(distance-1.0)*13.0)*0.045;
-        glow*=0.25+0.75*max(0.0,dot(normalize(float3(p,0.15)),light));
-        float a=glow*opacity*(1.0-smoothstep(1.15,1.28,distance));
-        return half4(float3(0.25,0.62,1.0)*a,a);
-    }
-    float3 n=float3(p,sqrt(max(0.0,1.0-rr)));
-    float3 world=turn(n,time);
-    float3 data=fields(world);
-    float terrain=data.r;
-    float land=smoothstep(0.47,0.52,terrain);
-    float mountain=data.g;
-    float coast=smoothstep(0.43,0.48,terrain)*(1.0-land);
-    float3 ocean=mix(float3(0.018,0.075,0.14),float3(0.035,0.19,0.25),coast);
-    float3 ground=mix(float3(0.10,0.20,0.18),float3(0.32,0.31,0.24),smoothstep(0.4,0.68,mountain));
-    float snow=smoothstep(0.76,0.92,abs(world.y)+mountain*0.10);
-    float3 albedo=mix(ocean,ground,land);
-    albedo=mix(albedo,float3(0.7,0.79,0.83),snow);
-    float sunlight=dot(n,light);
-    float daylight=smoothstep(-0.17,0.35,sunlight);
-    float3 color=albedo*(0.28+1.10*max(0.0,sunlight));
-    float3 cloudWorld=turn(n,time+0.04);
-    float clouds=fields(cloudWorld).b;
-    float veil=smoothstep(0.50,0.69,clouds)*0.90;
-    color=mix(color,float3(0.86,0.91,0.98)*(0.22+0.82*max(0.0,sunlight)),veil);
-    float spec=pow(max(0.0,dot(reflect(-light,n),float3(0,0,1))),48.0);
-    color+=float3(0.54,0.70,0.8)*spec*0.48*(1.0-land)*(1.0-veil);
-    float cities=smoothstep(0.72,0.86,noise(world*150.0))*smoothstep(0.48,0.63,mountain);
-    color+=float3(1.0,0.55,0.20)*cities*land*(1.0-daylight)*0.45;
-    float rim=pow(1.0-n.z,3.5);
-    color+=float3(0.12,0.37,0.78)*rim*(0.12+0.72*daylight);
-    float edge=1.0-smoothstep(0.995,1.0,distance);
-    float a=edge*opacity;
-    return half4(clamp(color,0.0,1.0)*a,a);
-}
-"""
-
-/** API 26–32 fallback: generated once off the main thread, never each frame. */
-internal fun bakePlanet(fields: Bitmap, size: Int): Bitmap {
-    val map = IntArray(fields.width * fields.height)
-    fields.getPixels(map, 0, fields.width, 0, 0, fields.width, fields.height)
-    fun sample(x: Float, y: Float, z: Float): Int {
-        val u = ((atan2(x, z) / (2 * PI) + .5) * fields.width).toInt().mod(fields.width)
-        val v =
-            ((asin(y.coerceIn(-1f, 1f)) / PI + .5) * fields.height)
-                .toInt()
-                .coerceIn(0, fields.height - 1)
-        return map[v * fields.width + u]
-    }
-    fun smooth(a: Float, b: Float, x: Float): Float {
-        val t = ((x - a) / (b - a)).coerceIn(0f, 1f)
-        return t * t * (3 - 2 * t)
-    }
-    val pixels = IntArray(size * size)
-    for (y in 0 until size) for (x in 0 until size) {
-        val px = (x + 0.5f - size / 2f) / (size / 2.56f)
-        val py = (y + 0.5f - size / 2f) / (size / 2.56f)
-        val rr = px * px + py * py
-        val r = sqrt(rr)
-        var a = 1f
-        var red: Float
-        var green: Float
-        var blue: Float
-        if (r > 1f) {
-            a =
-                (exp(-(r - 1) * 38) * .40f + exp(-(r - 1) * 13) * .045f) *
-                    (0.25f + 0.75f * max(0f, (-px * .72f - py * .47f) / r))
-            red = .25f
-            green = .62f
-            blue = 1f
-        } else {
-            val z = sqrt(1 - rr)
-            val daylight = max(0f, -px * .72f - py * .47f + z * .48f)
-            val data = sample(px, py, z)
-            val terrain = android.graphics.Color.red(data) / 255f
-            val land = smooth(.47f, .52f, terrain)
-            val light = .06f + 1.35f * daylight
-            red = (.018f + land * .14f) * light
-            green = (.075f + land * .15f) * light
-            blue = (.14f + land * .06f) * light
-            val clouds = smooth(.50f, .69f, android.graphics.Color.blue(data) / 255f) * .9f
-            red = red * (1 - clouds) + .86f * (.07f + .95f * daylight) * clouds
-            green = green * (1 - clouds) + .91f * (.07f + .95f * daylight) * clouds
-            blue = blue * (1 - clouds) + .98f * (.07f + .95f * daylight) * clouds
-            val rim = (1 - z).pow(3.5f) * (.12f + .72f * smooth(-.17f, .35f, daylight))
-            red += .12f * rim
-            green += .37f * rim
-            blue += .78f * rim
+        canvas.drawBitmap(day, null, destination, paint)
+        val length =
+            sqrt(sunlight.x * sunlight.x + sunlight.y * sunlight.y + sunlight.z * sunlight.z)
+        val phase = (sunlight.z / length).coerceIn(-1f, 1f)
+        val angle = atan2(sunlight.y, sunlight.x)
+        terminator.reset()
+        fun point(px: Float, py: Float, start: Boolean = false) {
+            val sx = x + radius * (px * cos(angle) - py * sin(angle))
+            val sy = y + radius * (px * sin(angle) + py * cos(angle))
+            if (start) terminator.moveTo(sx, sy) else terminator.lineTo(sx, sy)
         }
-        fun channel(v: Float) = (v.coerceIn(0f, 1f) * 255).roundToInt()
+        for (step in 0..96) {
+            val py = -1f + step / 48f
+            point(-sqrt((1 - py * py).coerceAtLeast(0f)), py, step == 0)
+        }
+        for (step in 96 downTo 0) {
+            val py = -1f + step / 48f
+            point(-phase * sqrt((1 - py * py).coerceAtLeast(0f)), py)
+        }
+        terminator.close()
+        canvas.save()
+        canvas.clipPath(terminator)
+        canvas.drawBitmap(night, null, destination, paint)
+        canvas.restore()
+    }
+}
+
+/** Project the real maps once off the main thread; never do per-pixel work during a Canvas draw. */
+internal fun bakeEarth(textures: EarthTextures, size: Int, night: Boolean): Bitmap {
+    class Map(val bitmap: Bitmap) {
+        val pixels =
+            IntArray(bitmap.width * bitmap.height).also {
+                bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            }
+
+        fun sample(u: Double, v: Double): Int =
+            pixels[
+                (v * bitmap.height).toInt().coerceIn(0, bitmap.height - 1) * bitmap.width +
+                    (u * bitmap.width).toInt().mod(bitmap.width)]
+    }
+    val dayMap = Map(textures.day)
+    val nightMap = Map(textures.night)
+    val cloudMap = Map(textures.clouds)
+    val pixels = IntArray(size * size)
+    fun channel(v: Double) = (v.coerceIn(0.0, 1.0) * 255).roundToInt()
+    for (y in 0 until size) for (x in 0 until size) {
+        val px = (x + .5 - size / 2.0) / (size / 2.0)
+        val py = (y + .5 - size / 2.0) / (size / 2.0)
+        val rr = px * px + py * py
+        if (rr >= 1) continue
+        val z = sqrt(1 - rr)
+        val wy = py * cos(.28) - z * sin(.28)
+        val wz = py * sin(.28) + z * cos(.28)
+        val u = atan2(px * cos(1.6) + wz * sin(1.6), -px * sin(1.6) + wz * cos(1.6)) / (2 * PI) + .5
+        val v = asin(wy) / PI + .5
+        val data = dayMap.sample(u, v)
+        val cloud = (Color.red(cloudMap.sample(u - .008 / (2 * PI), v)) / 255.0).pow(1.35) * .86
+        val lamp =
+            (max(0.0, Color.red(nightMap.sample(u, v)) / 255.0 - .012)).pow(.65) *
+                1.45 *
+                (1 - cloud * .65)
+        val shade = .45 + .55 * z
+        fun color(base: Int, tint: Double): Int =
+            channel(
+                if (night) base / 255.0 * .006 + lamp * tint
+                else (base / 255.0 * (1 - cloud) + cloud * .95) * shade
+            )
         pixels[y * size + x] =
-            android.graphics.Color.argb(channel(a), channel(red), channel(green), channel(blue))
+            Color.argb(
+                255,
+                color(Color.red(data), 1.0),
+                color(Color.green(data), .69),
+                color(Color.blue(data), .34),
+            )
     }
     return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
 }

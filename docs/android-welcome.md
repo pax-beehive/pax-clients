@@ -1,5 +1,41 @@
 # Android welcome and controls
 
+## Real Earth and night lights (0.1.10)
+
+The welcome globe now uses NASA Blue Marble land/ocean imagery, a separate
+cloud composite, and Black Marble 2016 night-light data. Continent shapes,
+coastlines, deserts, ice and city networks come from geographic imagery rather
+than procedural noise. A consistent spherical UV mapping aligns day and night,
+with an initial Asia-facing view and prograde rotation on the shader path.
+
+Solar incidence controls each pixel: terrain/cloud fill is almost black on the
+night side, and warm city lights become the main visible detail. Twilight fades
+the emission rather than switching whole textures when the Sun leaves the
+screen. Clouds attenuate lights; the sunlit edge keeps restrained atmospheric
+scattering. Source dates, credits and exact download verification are in
+[Earth imagery](earth-imagery.md) and travel with the bundled assets.
+
+The API 26–32 fallback also shows the real maps and updates its curved day/night
+boundary. Its geography stays static, and its shading/twilight are simpler than
+the API 33+ shader. Loading/decoding and fallback map projection happen off the
+UI thread; no per-frame CPU pixel baking or runtime network fetches are added.
+The older procedural field asset and its generator are removed.
+
+Validation: final debug build, lint, all 31 JVM tests and all 11 isolated-emulator
+UI/rendering tests passed. The two new rendering checks verify that both the
+shader and fallback show visible city lights on predominantly dark terrain at
+night and a much brighter surface under daylight. Existing rotation, entry,
+authentication flows and foldable state-preservation checks still pass. Reviewed
+the actual GPU day/night captures, compact and expanded welcome screens, and
+sampled frames from a 74-second normal-speed recording of night turning to day.
+The recording is `artifacts/validation-0.1.10/earth-day-night.mp4`.
+
+Installed 0.1.10 (11) on Pixel with account data retained; the installed APK hash
+matches `artifacts/paxworkspace-android-0.1.10-debug.apk`:
+`7c90357d2033640d7058b080a6f9f553b573c73f29fbd040a05122c2ebfe6936`.
+Pixel remained on its lock-screen dream activity, so this is not new physical
+playback or frame-time acceptance. Evidence: `artifacts/validation-0.1.10/`.
+
 ## Coherent orbits and camera (0.1.9)
 
 Replaces the 0.1.8 independently compressed circles, inclinations and integer
