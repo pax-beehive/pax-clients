@@ -17,8 +17,8 @@ The 0.1.2 client uses PKCE, rotating user sessions and adaptive foldable panes.
 It no longer uses node/device login. See [user login and foldables](docs/android-user-login-foldables.md)
 for current verification and migration details. Prior 0.1.1 live Claude checks
 are historical and do not establish acceptance of the new authentication flow.
-Version 0.1.5 centers the welcome scene on a rotating planet, with multiple
-satellite types on inclined orbits and layered particles; see
+Version 0.1.6 gives the welcome planet continuous terrain, clouds, day/night
+lighting and atmosphere, with three satellite types on inclined orbits; see
 [welcome and controls](docs/android-welcome.md).
 At the user's request, the project remains local; no remote has been created or pushed.
 
@@ -58,7 +58,7 @@ The last command uses the sibling `pax-console-workos` checkout, or a checkout
 path supplied as the first argument, to independently decrypt Android's generated
 synthetic test ciphertext using the existing web implementation.
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Current version: 0.1.5.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Current version: 0.1.6.
 Minimum OS: Android 8 / API 26. Application ID: `net.paxtech.workspace` (provisional).
 A browser capable of opening HTTPS links is required for account sign-in.
 

@@ -2,7 +2,6 @@ package net.paxtech.workspace
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -26,8 +25,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import kotlin.math.sin
 
-private val spaceInk = Color(0xFF080D18)
-private val starBlue = Color(0xFF80DFFF)
+private val spaceInk = Color(0xFF03070D)
 
 /** Native projected geometry and bounded particle fields; no video or downloaded assets. */
 @Composable
@@ -40,7 +38,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
         if (active) {
             if (!introPlayed) {
                 introPlayed = true
-                arrival.animateTo(1f, tween(1800, easing = FastOutSlowInEasing))
+                arrival.animateTo(1f, tween(2200, easing = FastOutSlowInEasing))
             } else arrival.snapTo(1f)
         }
     }
@@ -51,16 +49,18 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                 .animateFloat(
                     0f,
                     (Math.PI * 2).toFloat(),
-                    infiniteRepeatable(tween(48000, easing = LinearEasing)),
+                    infiniteRepeatable(tween(42000, easing = LinearEasing)),
                     label = "orbit time",
                 )
         } else remember { mutableFloatStateOf(0f) }
     Surface(Modifier.fillMaxSize(), color = spaceInk) {
         StarField(phase)
         BoxWithConstraints(Modifier.safeDrawingPadding()) {
-            val short = maxHeight < 660.dp
+            val heroHeight = (maxHeight - 280.dp).coerceIn(220.dp, 490.dp)
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                Modifier.fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -68,21 +68,20 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Box(
-                        Modifier.size(6.dp)
-                            .background(starBlue, androidx.compose.foundation.shape.CircleShape)
+                    Text(
+                        "PAX",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 3.sp,
+                        color = Color(0xFFEBF3FA),
                     )
                     Text(
-                        "PAX WORKSPACE",
-                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 3.sp),
-                        color = Color(0xFFADBFD5),
+                        "WORKSPACE",
+                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                        color = Color(0xFF8E9EAF),
                     )
                 }
-                Box(
-                    Modifier.widthIn(max = 480.dp)
-                        .fillMaxWidth()
-                        .height(if (short) 250.dp else 340.dp)
-                ) {
+                Box(Modifier.widthIn(max = 620.dp).fillMaxWidth().height(heroHeight)) {
                     PlanetaryScene(phase, arrival.asState())
                 }
                 Column(
@@ -97,8 +96,8 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                         "Your agents.",
                         style =
                             MaterialTheme.typography.headlineLarge.copy(
-                                fontSize = 34.sp,
-                                lineHeight = 41.sp,
+                                fontSize = 26.sp,
+                                lineHeight = 33.sp,
                             ),
                         color = Color(0xFFF4F7FF),
                         textAlign = TextAlign.Center,
@@ -107,25 +106,25 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                         "Within reach.",
                         style =
                             MaterialTheme.typography.headlineLarge.copy(
-                                fontSize = 34.sp,
-                                lineHeight = 41.sp,
+                                fontSize = 26.sp,
+                                lineHeight = 33.sp,
                                 brush =
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF8CE8FF), Color(0xFFA79CFF))
+                                        listOf(Color(0xFFB1D2E6), Color(0xFF8AA6BC))
                                     ),
                             ),
                         textAlign = TextAlign.Center,
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     Text(
-                        "Stay connected to the work in motion.",
+                        "Connected, wherever you are.",
                         Modifier.widthIn(max = 330.dp),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9DAFC5),
                         textAlign = TextAlign.Center,
                     )
                 }
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(24.dp))
                 Column(
                     Modifier.widthIn(max = 360.dp).fillMaxWidth().graphicsLayer {
                         val progress = ((arrival.value - 0.4f) / 0.6f).coerceIn(0f, 1f)
@@ -162,7 +161,7 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                     Text(
                         if (signedIn) "Welcome back. Your workspace is ready."
-                        else "Your workspace, wherever you are.",
+                        else "PaxWorkspace for Android",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9DAFC5),
                         textAlign = TextAlign.Center,
@@ -179,18 +178,18 @@ private fun StarField(phase: State<Float>) {
         val glowCenter = Offset(size.width * 0.5f, size.height * 0.36f)
         drawCircle(
             Brush.radialGradient(
-                listOf(Color(0xFF152B48), spaceInk.copy(alpha = 0f)),
+                listOf(Color(0xFF0A1726), spaceInk.copy(alpha = 0f)),
                 glowCenter,
                 size.maxDimension * 0.55f,
             ),
             size.maxDimension * 0.55f,
             glowCenter,
         )
-        repeat(100) { index ->
+        repeat(130) { index ->
             val x = ((index * 0.618034f + 0.13f) % 1f) * size.width
             val y = ((index * 0.414214f + 0.07f) % 1f) * size.height
             val shimmer = (sin(phase.value * 3f + index * 1.7f) + 1f) * 0.5f
-            val opacity = (0.12f + shimmer * 0.35f) * if (y > size.height * 0.57f) 0.35f else 1f
+            val opacity = (0.10f + shimmer * 0.28f) * if (y > size.height * 0.57f) 0.35f else 1f
             drawCircle(
                 Color(0xFFCADBFF).copy(alpha = opacity),
                 if (index % 7 == 0) 1.dp.toPx() else 0.5.dp.toPx(),

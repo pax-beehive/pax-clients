@@ -20,6 +20,7 @@ internal fun satelliteMesh(kind: Int = 0): List<SatelliteFace> = buildList {
         z1: Float,
         color: Color,
         openFront: Boolean = false,
+        openBack: Boolean = false,
     ) {
         if (!openFront)
             face(
@@ -30,14 +31,15 @@ internal fun satelliteMesh(kind: Int = 0): List<SatelliteFace> = buildList {
                 Vector3(x1, y1, z1),
                 Vector3(x0, y1, z1),
             )
-        face(
-            color,
-            Vector3(0f, 0f, -1f),
-            Vector3(x0, y0, z0),
-            Vector3(x1, y0, z0),
-            Vector3(x1, y1, z0),
-            Vector3(x0, y1, z0),
-        )
+        if (!openBack)
+            face(
+                color,
+                Vector3(0f, 0f, -1f),
+                Vector3(x0, y0, z0),
+                Vector3(x1, y0, z0),
+                Vector3(x1, y1, z0),
+                Vector3(x0, y1, z0),
+            )
         face(
             color,
             Vector3(0f, 1f, 0f),
@@ -72,7 +74,7 @@ internal fun satelliteMesh(kind: Int = 0): List<SatelliteFace> = buildList {
         )
     }
     val metal = Color(0xFFD1DCE9)
-    val gold = if (kind == 2) Color(0xFFBDCADA) else Color(0xFFD2AE69)
+    val gold = if (kind == 2) Color(0xFFBDCADA) else Color(0xFFC7B991)
     box(-0.35f, 0.35f, -0.32f, 0.32f, -0.25f, 0.25f, gold)
     box(-0.36f, 0.36f, 0.27f, 0.34f, -0.26f, 0.27f, metal)
     box(-0.36f, 0.36f, -0.34f, -0.27f, -0.26f, 0.27f, metal)
@@ -84,20 +86,37 @@ internal fun satelliteMesh(kind: Int = 0): List<SatelliteFace> = buildList {
             val left = if (side == -1) -1.42f else 0.52f
             val right = left + 0.9f
             // Cells replace the front surface, preventing coplanar faces from sorting over them.
-            box(left, right, -0.4f, 0.4f, -0.035f, 0.035f, Color(0xFF647BA7), openFront = true)
+            box(
+                left,
+                right,
+                -0.4f,
+                0.4f,
+                -0.035f,
+                0.035f,
+                Color(0xFF708197),
+                openFront = true,
+                openBack = true,
+            )
             repeat(5) { column ->
                 repeat(4) { row ->
                     val x = left + column * 0.18f
                     val y = -0.4f + row * 0.2f
-                    val color =
-                        if ((column + row) % 3 == 0) Color(0xFF5269CF) else Color(0xFF2859A1)
+                    val color = if (row % 2 == 0) Color(0xFF29445D) else Color(0xFF223D56)
                     face(
                         color,
                         Vector3(0f, 0f, 1f),
-                        Vector3(x, y, 0.037f),
-                        Vector3(x + 0.18f, y, 0.037f),
-                        Vector3(x + 0.18f, y + 0.2f, 0.037f),
-                        Vector3(x, y + 0.2f, 0.037f),
+                        Vector3(x + 0.012f, y + 0.008f, 0.037f),
+                        Vector3(x + 0.168f, y + 0.008f, 0.037f),
+                        Vector3(x + 0.168f, y + 0.192f, 0.037f),
+                        Vector3(x + 0.012f, y + 0.192f, 0.037f),
+                    )
+                    face(
+                        Color(0xFF718495),
+                        Vector3(0f, 0f, -1f),
+                        Vector3(x + 0.008f, y + 0.006f, -0.037f),
+                        Vector3(x + 0.172f, y + 0.006f, -0.037f),
+                        Vector3(x + 0.172f, y + 0.194f, -0.037f),
+                        Vector3(x + 0.008f, y + 0.194f, -0.037f),
                     )
                 }
             }
