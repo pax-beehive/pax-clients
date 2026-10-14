@@ -3,7 +3,11 @@
 Native Android and iOS clients for PaxWorkspace. **Android is the active priority**;
 iOS remains an initial shell and macOS is a future target.
 
-Intended upstream: `https://github.com/pax-beehive/pax-clients`.
+Repository: [pax-beehive/pax-clients](https://github.com/pax-beehive/pax-clients).
+
+[Download Android previews](https://github.com/pax-beehive/pax-clients/releases) ·
+[Build checks](https://github.com/pax-beehive/pax-clients/actions/workflows/verify.yml) ·
+[Android releases](docs/android-releases.md)
 
 ## Android status
 
@@ -25,7 +29,8 @@ orbits and an Earth-following perspective camera. Orbital distances are in AU;
 only disc sizes are enlarged for visibility. Satellites still orbit Earth,
 and signed-in entry zooms toward its surface; see
 [welcome and controls](docs/android-welcome.md).
-At the user's request, the project remains local; no remote has been created or pushed.
+Android APK prereleases are built and signed by GitHub Actions from version tags.
+See [release and signing instructions](docs/android-releases.md).
 
 ## Layout
 

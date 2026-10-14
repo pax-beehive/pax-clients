@@ -1,0 +1,3 @@
+# Public synthetic WebCrypto interoperability fixture; see contracts/README.md.
+4ecd6a466adbd65d14351cc16363bf0d4120c074:android/app/src/test/resources/web-vectors.json:generic-api-key:22
+4ecd6a466adbd65d14351cc16363bf0d4120c074:android/app/src/test/resources/web-vectors.json:generic-api-key:24

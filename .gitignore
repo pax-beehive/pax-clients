@@ -20,3 +20,7 @@ xcuserdata/
 
 .local-tools/
 artifacts/
+
+# Locally generated release output and signing material
+/dist/
+*.pem
