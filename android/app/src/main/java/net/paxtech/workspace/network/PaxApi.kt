@@ -47,7 +47,10 @@ class PaxApi @Inject constructor() {
         require(
             base.username.isEmpty() &&
                 base.password.isEmpty() &&
-                base.encodedPath == "/" &&
+                (base.encodedPath == "/" ||
+                    (base.isHttps &&
+                        base.host == "paxworkspace.net" &&
+                        base.encodedPath in setOf("/api/v1/native/us/", "/api/v1/native/hk/"))) &&
                 base.query == null &&
                 base.fragment == null
         )
@@ -57,7 +60,14 @@ class PaxApi @Inject constructor() {
         return base
             .newBuilder()
             .apply {
-                segments.forEach { addPathSegment(it) }
+                val routed =
+                    if (base.encodedPath != "/") {
+                        require(segments.take(2) == listOf("api", "v1")) {
+                            "Invalid native API route"
+                        }
+                        segments.drop(2)
+                    } else segments
+                routed.forEach { addPathSegment(it) }
                 query.forEach { (k, v) -> addQueryParameter(k, v) }
             }
             .build()
@@ -162,6 +172,13 @@ class PaxApi @Inject constructor() {
         if (!response.isSuccessful) {
             val message =
                 when (response.code) {
+                    301,
+                    302,
+                    303,
+                    307,
+                    308 -> "The API gateway requires a different sign-in route."
+                    404 -> "The requested resource or service is not available."
+                    503 -> "The mobile service is temporarily unavailable."
                     401 -> "Your access has expired or was revoked. Sign in again."
                     403 -> "Access was denied by the server or gateway."
                     429 -> "Too many requests. Please wait before retrying."

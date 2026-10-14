@@ -1,11 +1,12 @@
 # Android internal client
 
-Date: 2026-10-13. This supersedes the initial Android-only limitations in
+Date: 2026-10-13. See [UI and login integration](android-ui-login-fix.md) for
+the subsequent visual redesign and production gateway fix. This supersedes the initial Android-only limitations in
 `verification.md`; that document records the earlier preparation stage.
 
 ## Implemented
 
-- Native Kotlin/Compose UI, Material 3 light/dark themes, Hilt dependency injection,
+- Native Kotlin/Compose UI, Console-aligned dark theme, Hilt dependency injection,
   ViewModel/StateFlow state, and Navigation Compose.
 - Existing `client_commit_v1` device login: regional candidates, external browser
   confirmation, pinned account identity, commit, secure save, acknowledgement,
@@ -38,7 +39,7 @@ build-tools 35, platform tools, and an API 35 ARM64 AOSP emulator. The Google AP
 image failed archive validation; the smaller official AOSP image installed and
 booted successfully. No global shell configuration was changed.
 
-## Production integration still open
+## Initial production findings (superseded by the linked gateway fix)
 
 - Current machine requests to both regional `/api/v1/user/self/me` endpoints
   returned Cloudflare 403 / error 1010. Do not infer that a real phone is blocked

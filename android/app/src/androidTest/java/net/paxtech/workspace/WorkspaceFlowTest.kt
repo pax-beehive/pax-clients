@@ -132,6 +132,7 @@ class WorkspaceFlowTest {
     fun opensSessionSendsInstructionAndReviewsApproval() {
         launch(true)
         awaitText("Android integration session")
+        capture("home")
         compose.onNodeWithText("Android integration session").performClick()
         awaitText("Hello from the test agent")
         compose.onNodeWithText("Message your agent").performTextInput("Inspect this project")
@@ -148,7 +149,7 @@ class WorkspaceFlowTest {
         assertTrue(decision)
         scenario!!.recreate()
         awaitText("No pending approvals.")
-        compose.onNodeWithText("Sessions").performClick()
+        compose.onNodeWithText("Home").performClick()
         awaitText("Android integration session")
     }
 }

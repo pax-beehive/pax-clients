@@ -2,11 +2,15 @@ package net.paxtech.workspace
 
 import android.content.ClipData
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
@@ -14,12 +18,14 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
@@ -33,7 +39,7 @@ import kotlinx.coroutines.withContext
 import net.paxtech.workspace.data.*
 import net.paxtech.workspace.session.*
 
-private val tabs = listOf("Sessions", "Projects", "Devices", "Approvals", "Settings")
+private val tabs = listOf("Home", "Approvals", "Settings")
 
 @Composable
 fun WorkspaceShell(vm: WorkspaceViewModel) {
@@ -74,6 +80,8 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
 @Composable
 private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
     val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val copyScope = rememberCoroutineScope()
     var opened by rememberSaveable { mutableStateOf("") }
     var browserError by remember { mutableStateOf<String?>(null) }
     fun launchBrowser(url: String) {
@@ -94,54 +102,117 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
             }
     }
     Surface(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.safeDrawingPadding().padding(28.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Home,
-                null,
-                Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(24.dp))
-            Text(
-                "PaxWorkspace",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text("Your agents. Wherever you are.", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Continue sessions, follow progress, and review requests from your connected computers."
-            )
-            Spacer(Modifier.height(32.dp))
-            if (state.loading || state.working) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (state.login == null)
-                Button(
-                    onClick = vm::startLogin,
-                    enabled = !state.working && !state.loading,
-                    modifier = Modifier.fillMaxWidth(),
+        Column(Modifier.safeDrawingPadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "PAX",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Workspace",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Box(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.widthIn(max = 440.dp).fillMaxWidth().padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text("Sign in")
-                }
-            else {
-                Text("Confirm sign-in in your browser, then return here.")
-                state.login.candidates.forEach {
-                    Text("${it.region.uppercase()}: ${it.code}", fontFamily = FontFamily.Monospace)
-                }
-                Button(
-                    onClick = { launchBrowser(state.login.url) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Open sign-in page")
-                }
-                Row {
-                    TextButton(onClick = vm::pollLogin) { Text("Check sign-in") }
-                    TextButton(onClick = vm::cancelLogin) { Text("Cancel") }
+                    Text(
+                        "PaxWorkspace",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Sign in to your workspace",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                    Text(
+                        "Continue your agent sessions and review approvals from your phone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (state.loading || state.working)
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (state.login == null) {
+                        WorkspaceButton(
+                            onClick = vm::startLogin,
+                            enabled = !state.working && !state.loading,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Sign in")
+                        }
+                        Text(
+                            "Use your PaxWorkspace account in the browser.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text("Confirm sign-in in your browser, then return here.")
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            shape = MaterialTheme.shapes.medium,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                state.login.candidates.forEach {
+                                    Text(
+                                        "${it.region.uppercase()}: ${it.code}",
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                            }
+                        }
+                        WorkspaceButton(
+                            onClick = { launchBrowser(state.login.url) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Open sign-in page")
+                        }
+                        TextButton(
+                            onClick = {
+                                copyScope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipEntry(
+                                            ClipData.newPlainText(
+                                                "PaxWorkspace sign-in",
+                                                state.login.url,
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+                        ) {
+                            Text("Copy link to use another browser")
+                        }
+                        Row {
+                            TextButton(onClick = vm::pollLogin) { Text("Check sign-in") }
+                            TextButton(onClick = vm::cancelLogin) { Text("Cancel") }
+                        }
+                    }
+                    (state.error ?: browserError)?.let { ErrorNotice(it) }
                 }
             }
-            (state.error ?: browserError)?.let { ErrorNotice(it) }
+            Text(
+                "Your agents keep running on your computers.",
+                Modifier.align(Alignment.CenterHorizontally).padding(24.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -149,14 +220,25 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
-    var tab by rememberSaveable { mutableStateOf("Sessions") }
+    var tab by rememberSaveable { mutableStateOf("Home") }
     var filter by rememberSaveable { mutableStateOf("") }
     var project by rememberSaveable { mutableStateOf("") }
     var signOut by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(tab) },
+                title = {
+                    Text(
+                        if (tab == "Home") "Workspace" else tab,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
+                navigationIcon = {
+                    if (tab in listOf("Projects", "Devices"))
+                        IconButton(onClick = { tab = "Settings" }) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to settings")
+                        }
+                },
                 actions = {
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Outlined.Refresh, "Refresh")
@@ -165,16 +247,21 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 0.dp,
+            ) {
                 tabs.forEach { label ->
                     NavigationBarItem(
-                        selected = tab == label,
+                        selected =
+                            tab == label ||
+                                (label == "Settings" && tab in listOf("Projects", "Devices")),
                         onClick = { tab = label },
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                         icon = {
                             Icon(
                                 when (label) {
-                                    "Projects" -> Icons.Outlined.Home
+                                    "Home" -> Icons.Outlined.Home
                                     "Devices" -> Icons.Outlined.Phone
                                     "Approvals" -> Icons.Outlined.CheckCircle
                                     "Settings" -> Icons.Outlined.Settings
@@ -190,13 +277,13 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
     ) { padding ->
         LazyColumn(
             Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { item { ErrorNotice(it) } }
             when (tab) {
-                "Sessions" -> {
+                "Home" -> {
                     item {
                         OutlinedTextField(
                             filter,
@@ -205,6 +292,20 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                    }
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Recent sessions",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = { tab = "Projects" }) { Text("Projects") }
+                        }
                     }
                     if (project.isNotEmpty())
                         item {
@@ -216,12 +317,21 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 (filter.isBlank() || it.title.contains(filter, true))
                         }
                     items(shown, key = { it.session_id }) { target ->
-                        Card(onClick = { vm.open(target) }, modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            onClick = { vm.open(target) },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.background,
+                        ) {
                             Column(
-                                Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                Modifier.padding(vertical = 16.dp, horizontal = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                Text(target.title, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    target.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                                 Text(
                                     target.runtime_status.replace('_', ' '),
                                     style = MaterialTheme.typography.labelMedium,
@@ -262,7 +372,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 TextButton(
                                     onClick = {
                                         project = item.project_id
-                                        tab = "Sessions"
+                                        tab = "Home"
                                     }
                                 ) {
                                     Text("Sessions")
@@ -302,17 +412,37 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                 }
                 "Settings" -> {
                     item {
+                        Text(
+                            "Workspace",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { tab = "Devices" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Devices")
+                        }
+                        TextButton(
+                            onClick = { tab = "Projects" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Projects")
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    item {
                         Text(state.credential!!.email, style = MaterialTheme.typography.titleMedium)
                         Text("Account region: ${state.credential.region.uppercase()}")
                     }
                     item {
                         Text(
-                            "PaxWorkspace for Android · 0.1.0",
+                            "PaxWorkspace for Android · ${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     item {
-                        OutlinedButton(onClick = { signOut = true }) {
+                        WorkspaceOutlinedButton(onClick = { signOut = true }) {
                             Text("Sign out of this device")
                         }
                     }
@@ -358,7 +488,7 @@ private fun ApprovalCard(
             approval.options
                 .filter { it.option_id.isNotBlank() }
                 .forEach { option ->
-                    OutlinedButton(
+                    WorkspaceOutlinedButton(
                         onClick = { selected = option },
                         enabled = !working && approval.status in setOf("", "pending"),
                     ) {
@@ -417,7 +547,12 @@ private fun SessionScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(target.title, maxLines = 1)
+                        Text(
+                            target.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         Text(session.connection, style = MaterialTheme.typography.labelSmall)
                     }
                 },
@@ -435,19 +570,24 @@ private fun SessionScreen(
         },
         bottomBar = {
             if (!session.locked)
-                Surface(tonalElevation = 3.dp) {
-                    Column(Modifier.navigationBarsPadding().imePadding().padding(12.dp)) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    Column(
+                        Modifier.navigationBarsPadding()
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
                         session.error?.let { ErrorNotice(it) }
                         OutlinedTextField(
                             draft,
                             { draft = it },
-                            label = { Text("Message your agent") },
+                            placeholder = { Text("Message your agent") },
+                            shape = MaterialTheme.shapes.large,
                             modifier = Modifier.fillMaxWidth(),
                             maxLines = 6,
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             if (session.busy) TextButton(onClick = vm::stop) { Text("Stop") }
-                            Button(
+                            WorkspaceButton(
                                 onClick = {
                                     val text = draft
                                     submitted = text
@@ -478,7 +618,9 @@ private fun SessionScreen(
                         "This session is encrypted. Confirm access on the computer running this agent."
                     )
                 }
-                item { Button(onClick = vm::beginPairing) { Text("Prepare authorization") } }
+                item {
+                    WorkspaceButton(onClick = vm::beginPairing) { Text("Prepare authorization") }
+                }
                 state.pairing?.let { pending ->
                     item {
                         Text("Run this command on your agent's computer:")
@@ -491,7 +633,7 @@ private fun SessionScreen(
                         }
                     }
                     item {
-                        OutlinedButton(
+                        WorkspaceOutlinedButton(
                             onClick = {
                                 scope.launch {
                                     clipboard.setClipEntry(
@@ -507,7 +649,7 @@ private fun SessionScreen(
                         ) {
                             Text("Copy authorization command")
                         }
-                        Button(onClick = vm::finishPairing) { Text("Check authorization") }
+                        WorkspaceButton(onClick = vm::finishPairing) { Text("Check authorization") }
                     }
                 }
                 state.error?.let { item { ErrorNotice(it) } }
@@ -516,8 +658,8 @@ private fun SessionScreen(
             LazyColumn(
                 Modifier.padding(padding).fillMaxSize(),
                 state = list,
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (session.hasOlder)
                     item(key = "older") {
@@ -552,31 +694,31 @@ private fun MessageCard(message: ChatItem) {
     var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
     val collapsible = message.role in setOf("tool", "thought") || message.text.length > 12000
     val shown = if (collapsible && !expanded) message.text.take(600) else message.text
-    Card(
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    if (message.role == "user") MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainer
-            )
+    Surface(
+        color =
+            if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
+            else MaterialTheme.colorScheme.background,
+        shape = MaterialTheme.shapes.large,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(if (message.role == "user") 12.dp else 0.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                message.title.ifBlank {
-                    when (message.role) {
-                        "user" -> "You"
-                        "thought" -> "Reasoning"
-                        "tool" -> "Tool"
-                        else -> "Agent"
-                    }
-                },
-                style = MaterialTheme.typography.labelLarge,
-            )
+            if (message.role in setOf("tool", "thought", "approval")) {
+                Text(
+                    message.title.ifBlank {
+                        if (message.role == "thought") "Thinking" else "Activity"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (message.status.isNotBlank())
-                Text(message.status, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    message.status,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             SelectionContainer { MarkdownText(shown) }
             if (collapsible)
                 TextButton(onClick = { expanded = !expanded }) {

@@ -14,9 +14,10 @@ local-device E2EE authorization. See [Android delivery status](docs/android-stat
 for implemented behavior, validation, and remaining integration work.
 
 This is not a production-verified or store-ready release. Real-account login and
-live-agent interoperability still need end-to-end validation. The current machine's
-production API probe received Cloudflare 403. At the user’s request, the project
-remains local; no remote repository has been created and no push has been made.
+live-agent interoperability still need end-to-end validation. The native gateway
+fix for regional Cloudflare Access redirects and current verification are recorded
+in [UI and login integration](docs/android-ui-login-fix.md). At the user's request,
+the project remains local; no remote repository has been created or pushed.
 
 ## Layout
 
@@ -52,7 +53,7 @@ The last command uses the sibling `pax-console-workos` checkout, or a checkout
 path supplied as the first argument, to independently decrypt Android's generated
 synthetic test ciphertext using the existing web implementation.
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Current version: 0.1.1.
 Minimum OS: Android 8 / API 26. Application ID: `net.paxtech.workspace` (provisional).
 A browser capable of opening HTTPS links is required for account sign-in.
 

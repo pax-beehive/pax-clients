@@ -25,6 +25,80 @@ class MemoryVault(var value: VaultData = VaultData()) : Vault {
 }
 
 class ProtocolTest {
+    @Test
+    fun routesNativeRequestsThroughRegionalGateway() {
+        val api = PaxApi()
+        assertEquals(
+            "https://paxworkspace.net/api/v1/native/hk/user/self/sessions?page_num=2",
+            api.url(
+                    "https://paxworkspace.net/api/v1/native/hk/",
+                    userPath("sessions"),
+                    mapOf("page_num" to "2"),
+                )
+                .toString(),
+        )
+        assertEquals(
+            "https://paxworkspace.net/api/v1/native/us/paxl/device-login/start",
+            api.url(
+                    "https://paxworkspace.net/api/v1/native/us/",
+                    listOf("api", "v1", "paxl", "device-login", "start"),
+                )
+                .toString(),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            api.url("https://other.example.invalid/api/v1/native/us/", userPath("me"))
+        }
+    }
+
+    @Test
+    fun reportsGatewayFailureInsteadOfHidingItAsConnectivity() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "https://access.example.invalid/login")
+            )
+            val failure =
+                runCatching {
+                        DeviceLogin(PaxApi(), MemoryVault())
+                            .start(listOf("us" to server.url("/").toString()))
+                    }
+                    .exceptionOrNull()
+            assertTrue(failure!!.message!!.contains("HTTP 302"))
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    @Test
+    fun startsRegionalLoginAndRetainsWorkingRegionWhenOtherIsUnavailable() = runBlocking {
+        MockWebServer().use { us ->
+            MockWebServer().use { hk ->
+                us.enqueue(MockResponse().setResponseCode(503))
+                hk.enqueue(
+                    response(
+                        body(
+                            "protocol" to "client_commit_v1",
+                            "region" to "hk",
+                            "verification_uri" to "https://paxworkspace.net/paxl-login.html",
+                            "login_id" to "login_fixture",
+                            "poll_token" to "poll_fixture",
+                            "user_code" to "ABC123",
+                        )
+                    )
+                )
+                val vault = MemoryVault()
+                val attempt =
+                    DeviceLogin(PaxApi(), vault)
+                        .start(
+                            listOf("us" to us.url("/").toString(), "hk" to hk.url("/").toString())
+                        )
+                assertEquals("https://paxworkspace.net/paxl-login.html?hk_code=ABC123", attempt.url)
+                assertEquals("hk", attempt.candidates.single().region)
+                assertEquals(attempt, vault.value.login)
+            }
+        }
+    }
+
     private fun vector() =
         wireJson
             .parseToJsonElement(javaClass.getResource("/web-vectors.json")!!.readText())

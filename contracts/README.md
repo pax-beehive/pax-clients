@@ -60,9 +60,17 @@ and `auth.go`. Regional API origins are `https://api.paxworkspace.net` and
 - `GET /api/v1/user/self/me` identifies the user API credential owner.
 - `DELETE /api/v1/user/self/api-keys/:key_id` revokes this app's credential.
 
-The app calls regional user API paths directly with the user bearer credential.
-The earlier `/api/pax` prefix applies to browser gateway calls, not these native
-regional calls. No Node Key is accepted as a user credential.
+Android reaches these contracts through the canonical native gateway:
+`https://paxworkspace.net/api/v1/native/{us|hk}/`. It replaces the initial
+`/api/v1/` prefix with this gateway base. The Worker forwards only allowlisted
+routes to the selected region, using server-side Access credentials; Manager
+still validates the user bearer credential. No Node Key is accepted as a user
+credential. `/api/pax` remains the browser gateway prefix.
+
+Gateway source: `pax-manager-android-native/workers/region-directory/src/native.ts`,
+local commits `1de3456` and `59428fd`. Start responses use the canonical
+`https://paxworkspace.net/paxl-login.html` confirmation page, including HK starts.
+The Android client retains strict verification-host validation.
 
 Synthetic WebCrypto fixtures: `android/app/src/test/resources/web-vectors.json`.
 The fixture includes deliberately public test keys, never account data. Tests

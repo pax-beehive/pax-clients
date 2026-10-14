@@ -43,7 +43,7 @@ The region-directory Worker implements `/auth/login`, `/auth/callback`,
 `/auth/session`, and `/auth/logout`. It stores the PKCE verifier in an encrypted
 browser transaction cookie and returns an encrypted HttpOnly session cookie.
 The browser gateway authenticates that cookie before regional API routing.
-This is not an implemented native bearer-token login path.
+That cookie flow remains separate from native user-key authorization.
 
 ## Android authentication choice after source inspection
 
@@ -54,11 +54,16 @@ the existing WorkOS-backed browser confirmation page, pins the confirmed user,
 commits one candidate, saves the credential before acknowledgement, and cancels
 the other candidate. Sign-out revokes this app's API-key ID.
 
-Browser cookies remain in the browser. No WorkOS secret, browser cookie scraping,
-or new gateway bearer-token assumption is introduced. This choice replaces the
-initial proposal to design a new native OAuth callback flow. User API keys are
-revocable credentials; they do not have an implemented OAuth refresh-token cycle.
-Production device login still requires end-to-end verification.
+Browser cookies remain in the browser. The native gateway at
+`/api/v1/native/{us|hk}/` now explicitly supports the existing Manager user-key
+contract. Access service credentials stay in the Worker, while Manager validates
+the key and resource permissions. Start responses normalize browser confirmation
+to the canonical WorkOS site. No WorkOS secret is stored in the app.
+
+User API keys are revocable credentials; they do not have an implemented OAuth
+refresh-token cycle. Production start/poll and authorization boundaries are
+verified from Android; real-account confirmation and live-agent operations remain
+pending. See [current integration evidence](android-ui-login-fix.md).
 
 ## Encryption and streaming
 

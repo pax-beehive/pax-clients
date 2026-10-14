@@ -10,17 +10,24 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 
 @Singleton
 class DeviceLogin @Inject constructor(private val api: PaxApi, private val vault: Vault) {
-    suspend fun start(): LoginAttempt = coroutineScope {
+    suspend fun start(): LoginAttempt =
+        start(
+            listOf(
+                "us" to "https://paxworkspace.net/api/v1/native/us/",
+                "hk" to "https://paxworkspace.net/api/v1/native/hk/",
+            )
+        )
+
+    internal suspend fun start(origins: List<Pair<String, String>>): LoginAttempt = coroutineScope {
         val saved = vault.read()
         saved.login
             ?.takeIf { it.expiresAt > System.currentTimeMillis() }
             ?.let {
                 return@coroutineScope it
             }
-        val origins = listOf("https://api.paxworkspace.net", "https://hk-api.paxworkspace.net")
-        val candidates =
+        val results =
             origins
-                .map { origin ->
+                .map { (expectedRegion, origin) ->
                     async {
                         try {
                             val result =
@@ -41,9 +48,7 @@ class DeviceLogin @Inject constructor(private val api: PaxApi, private val vault
                                 "Server does not support safe device login"
                             }
                             val region = result.text("region")
-                            require(region == if (origin == origins.first()) "us" else "hk") {
-                                "Unexpected login region"
-                            }
+                            require(region == expectedRegion) { "Unexpected login region" }
                             val verification = result.text("verification_uri").toHttpUrl()
                             require(
                                 verification.isHttps &&
@@ -52,32 +57,47 @@ class DeviceLogin @Inject constructor(private val api: PaxApi, private val vault
                             ) {
                                 "Untrusted sign-in destination"
                             }
-                            LoginCandidate(
-                                    origin,
-                                    region,
-                                    result.text("login_id"),
-                                    result.text("user_code"),
-                                    result.text("poll_token"),
-                                    result.number("interval", 2).coerceIn(2, 30),
-                                )
-                                .also {
-                                    require(
-                                        it.loginId.isNotBlank() &&
-                                            it.pollToken.isNotBlank() &&
-                                            Regex("[A-Z0-9]{6}").matches(it.code)
+                            Result.success(
+                                LoginCandidate(
+                                        origin,
+                                        region,
+                                        result.text("login_id"),
+                                        result.text("user_code"),
+                                        result.text("poll_token"),
+                                        result.number("interval", 2).coerceIn(2, 30),
                                     )
-                                }
+                                    .also {
+                                        require(
+                                            it.loginId.isNotBlank() &&
+                                                it.pollToken.isNotBlank() &&
+                                                Regex("[A-Z0-9]{6}").matches(it.code)
+                                        )
+                                    }
+                            )
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            null
+                            Result.failure<LoginCandidate>(e)
                         }
                     }
                 }
                 .awaitAll()
-                .filterNotNull()
+        val candidates = results.mapNotNull { it.getOrNull() }
         check(candidates.isNotEmpty()) {
-            "Could not reach the sign-in service. Check your connection and retry."
+            "Sign-in is unavailable. " +
+                results
+                    .mapIndexed { index, result ->
+                        val failure = result.exceptionOrNull()
+                        val reason =
+                            when (failure) {
+                                is ApiFailure -> "HTTP ${failure.status}: ${failure.message}"
+                                is java.net.UnknownHostException -> "Network name lookup failed."
+                                is java.net.SocketTimeoutException -> "Connection timed out."
+                                else -> failure?.message ?: "Connection failed."
+                            }
+                        "${origins[index].first.uppercase()}: $reason"
+                    }
+                    .joinToString("\n")
         }
         val url =
             "https://paxworkspace.net/paxl-login.html"
