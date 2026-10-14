@@ -1,5 +1,33 @@
 # Android welcome and controls
 
+## Enter through the planet (0.1.7)
+
+For a restored signed-in account, **Enter workspace** now starts a 1.05-second
+camera approach. Labels fade first; the planet grows exponentially and moves
+toward the window center, filling the screen before dissolving into the
+workspace background. The workspace then fades in over 220ms. The scene draws
+at window level so the zoom is not clipped by the scrolling hero slot; its
+resting bounds still follow the responsive layout. These durations follow the
+system animation scale, with no artificial delay when animations are disabled.
+
+Signed-out entry still opens login immediately. Repeated taps cannot schedule
+multiple entries. Back cancels the approach; an in-progress entry survives
+saved-state restoration and finishes after returning to the resumed lifecycle.
+
+Validation: debug build, lint and all 25 JVM tests passed. All 8 isolated
+emulator UI/rendering tests passed, including 3 new checks for delayed signed-in
+navigation with duplicate taps, immediate signed-out navigation, and entry
+completion after saved-state restoration. The existing 5 flow/rendering tests
+also passed with system animations disabled. Reviewed the normal expanded
+layout and an intermediate full-screen planet frame from the controlled
+animation clock. The Pixel was locked during this update, so no new physical
+device transition playback or performance claim is made.
+
+Installed 0.1.7 (8) on the Pixel without clearing account data, and verified the
+installed APK hash against `artifacts/paxworkspace-android-0.1.7-debug.apk`:
+`4a3e7e0d3daa80a852f7989cb7512733036eef7e2268a02e941855cc1711524f`.
+Evidence: `artifacts/validation-0.1.7/`. Local changes only; no remote push.
+
 ## Shaded planet and visual review (0.1.6)
 
 The planet is now the main visual subject: continuous terrain and clouds,

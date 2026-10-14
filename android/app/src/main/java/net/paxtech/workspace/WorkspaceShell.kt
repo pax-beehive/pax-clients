@@ -3,6 +3,8 @@ package net.paxtech.workspace
 import android.content.ClipData
 import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +65,7 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         }
     }
     var welcome by rememberSaveable { mutableStateOf(true) }
+    var revealWorkspace by rememberSaveable { mutableStateOf(false) }
     // Resume an in-flight browser sign-in directly, including after process recreation.
     LaunchedEffect(state.login, state.needsRegion) {
         if (state.login != null || state.needsRegion) welcome = false
@@ -70,7 +74,10 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         WelcomeScreen(
             signedIn = state.credential != null,
             restoring = state.loading && state.credential == null,
-            onEnter = { welcome = false },
+            onEnter = {
+                revealWorkspace = state.credential != null
+                welcome = false
+            },
         )
         return
     }
@@ -80,18 +87,31 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         return
     }
     BackHandler(enabled = state.selected != null) { vm.close() }
-    AdaptiveWorkspace(
-        selected = state.selected != null,
-        home = { WorkspaceHome(state, vm) },
-        detail = {
-            val target = state.selected
-            if (target != null) key(target.session_id) { SessionScreen(target, state, session, vm) }
-            else
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Select a session", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-        },
-    )
+    val workspaceOpacity = remember { Animatable(if (revealWorkspace) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        workspaceOpacity.animateTo(1f, tween(220))
+        revealWorkspace = false
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = workspaceOpacity.value }) {
+            AdaptiveWorkspace(
+                selected = state.selected != null,
+                home = { WorkspaceHome(state, vm) },
+                detail = {
+                    val target = state.selected
+                    if (target != null)
+                        key(target.session_id) { SessionScreen(target, state, session, vm) }
+                    else
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                "Select a session",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                },
+            )
+        }
+    }
 }
 
 @Composable

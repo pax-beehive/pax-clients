@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.unit.dp
@@ -44,14 +45,22 @@ internal fun PlanetaryScene(
     phase: State<Float>,
     arrival: State<Float>,
     forceSoftware: Boolean = false,
+    viewport: Rect? = null,
+    approach: State<Float>? = null,
 ) {
     val satellites = remember { (0..2).map(::satelliteMesh) }
     val planet = rememberPlanetPainter(forceSoftware)
     Canvas(Modifier.fillMaxSize()) {
         val time = phase.value
         val reveal = arrival.value
-        val unit = min(size.width, size.height) / 4.95f * (0.86f + reveal * 0.14f)
-        val origin = center
+        val frame = viewport ?: Rect(Offset.Zero, size)
+        if (frame.width <= 0f || frame.height <= 0f) return@Canvas
+        val flight = approach?.value ?: 0f
+        val restingUnit = min(frame.width, frame.height) / 4.95f * (0.86f + reveal * 0.14f)
+        // Exponential dolly keeps the approach gentle initially and fills any screen aspect ratio.
+        val destinationRadius = hypot(size.width, size.height) * 0.7f
+        val unit = restingUnit * (destinationRadius / (restingUnit * 1.34f)).pow(flight)
+        val origin = frame.center + (center - frame.center) * flight
         fun project(v: Vector3): Offset {
             val perspective = 10f / (10f - v.z)
             return origin + Offset(v.x, -v.y) * unit * perspective
