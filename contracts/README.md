@@ -83,3 +83,13 @@ The fixture includes deliberately public test keys, never account data. Tests
 check envelope decryption and P-256 root-key unwrapping. Android-generated
 ciphertext is separately checked by `scripts/verify-web-interop.mjs` using the
 original web implementation.
+
+## iOS native client
+
+iOS uses the same public-client PKCE, native gateway, manager routes, SSE and
+legacy-v1 E2EE wire contracts as Android. The fixed custom callback scheme is
+registered in `apple/App/Info.plist`; the deployed legacy `native.android.` state
+prefix is retained for compatibility, with fresh per-attempt state/verifier.
+See [iOS source map and validation](../docs/ios-status.md). Swift tests consume a
+copy of the same synthetic WebCrypto fixture and independently emit a CryptoKit
+command for `scripts/verify-ios-web-interop.mjs` to decrypt with the web source.

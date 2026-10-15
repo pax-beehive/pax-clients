@@ -15,8 +15,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build shared Apple package
-        run: swift build --package-path apple/Packages/PaxWorkspaceKit
+      - name: Test shared Apple package
+        run: swift test --package-path apple/Packages/PaxWorkspaceKit
       - name: Build iOS simulator app
         run: >-
           xcodebuild -project apple/PaxWorkspace.xcodeproj

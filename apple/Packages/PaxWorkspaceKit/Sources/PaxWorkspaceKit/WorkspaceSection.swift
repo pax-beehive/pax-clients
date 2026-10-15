@@ -1,5 +1,5 @@
 public enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
-    case sessions, projects, devices, settings
+  case sessions, projects, devices, settings
 
-    public var id: Self { self }
+  public var id: Self { self }
 }

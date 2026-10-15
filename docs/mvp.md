@@ -40,7 +40,8 @@ requires selecting the correct project target, device, agent, and working path.
 
 Android implementation and synthetic protocol validation are recorded in
 `android-status.md`. Production checks in these gates remain open; passing local
-tests does not complete the live integration gates. iOS implementation is deferred.
+tests does not complete the live integration gates. iOS development is now active;
+see [iOS status](ios-status.md) for the implementation and remaining acceptance gates.
 
 ## Deferred
 

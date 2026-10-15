@@ -1,0 +1,20 @@
+Earth imagery credits
+
+Day: NASA Earth Observatory, Blue Marble Next Generation, July 2004, with topography.
+https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography/
+
+Night: NASA Earth Observatory image by Joshua Stevens, using Suomi NPP VIIRS data
+from Miguel Roman, NASA Goddard Space Flight Center. Black Marble 2016 grayscale.
+https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/
+
+Clouds: NASA Goddard Space Flight Center. Image by Reto Stockli; enhancements by
+Robert Simmon. Blue Marble cloud composite, 2002.
+https://visibleearth.nasa.gov/images/57747/blue-marble-clouds/77558l
+
+These historical composites are not live weather, current lighting, or a single
+photograph. The application adds animated illumination and warm display tinting.
+NASA imagery use does not imply NASA endorsement of PaxWorkspace.
+https://www.nasa.gov/nasa-brand-center/images-and-media/
+
+The JPEG files are unmodified source downloads. Full URLs and SHA-256 checksums
+are recorded in scripts/fetch-earth-assets.py in the source repository.

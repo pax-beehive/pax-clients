@@ -3,7 +3,7 @@
 ## Platform choices
 
 - iOS: Swift, SwiftUI, structured concurrency; native networking and secure
-  storage when integration begins. Swift packages are the reuse boundary for
+  storage through URLSession, Keychain and CryptoKit. Swift packages are the reuse boundary for
   future macOS support.
 - Android: Kotlin, Jetpack Compose, coroutines, platform lifecycle and secure
   storage. Start with a single app module; extract deep modules when real feature
@@ -93,8 +93,13 @@ after a timeout unless the server's idempotency contract has been verified.
 
 ## macOS path
 
-`PaxWorkspaceKit` currently has a platform-neutral navigation model and a SwiftUI
-shell, buildable on macOS for package validation. This is not a macOS application.
+`PaxWorkspaceKit` contains the shared auth, transport, crypto, repository and
+session runtime, buildable on macOS for protocol tests. Its active UI is iOS-only. This is not a macOS application.
 Later, extract transport and session features into additional packages as they
 appear, then add a macOS app target using those packages with desktop-specific
 window and navigation behavior. iOS scene assumptions stay in `apple/App`.
+
+## iOS implementation
+
+See [iOS status](ios-status.md) for the SwiftUI/Observation runtime, system-browser
+PKCE compatibility, Keychain lifecycle and verified interoperability boundaries.

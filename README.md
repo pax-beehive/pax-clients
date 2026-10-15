@@ -1,7 +1,7 @@
 # PaxWorkspace native clients
 
-Native Android and iOS clients for PaxWorkspace. **Android is the active priority**;
-iOS remains an initial shell and macOS is a future target.
+Native Android and iOS clients for PaxWorkspace. Android is the feature baseline;
+iOS is now in active development with a native SwiftUI client. macOS is a future target.
 
 Repository: [pax-beehive/pax-clients](https://github.com/pax-beehive/pax-clients).
 
@@ -40,7 +40,7 @@ See [release and signing instructions](docs/android-releases.md).
 
 ```text
 android/                     Kotlin / Compose / Hilt Android application
-apple/PaxWorkspace.xcodeproj  Initial iOS application
+apple/PaxWorkspace.xcodeproj  Native iPhone / iPad application
 apple/Packages/               Shared Swift package for future Apple clients
 contracts/                    Protocol provenance
 scripts/                      Build and interoperability helpers
@@ -84,16 +84,23 @@ tests. Release builds require HTTPS. Test credentials are synthetic and injected
 by instrumentation into the normal secure storage; no production login bypass
 or test account is embedded in the application.
 
-## iOS (deferred)
+## iOS development preview
 
 Open `apple/PaxWorkspace.xcodeproj` and run the `PaxWorkspace` scheme on an iOS
 simulator. Minimum iOS 17. Physical-device builds require your signing team.
+See [iOS status and parity](docs/ios-status.md) for implemented features, protocol
+validation, simulator signing, UI tests, and the remaining live-account checks.
+The current iOS build includes project/session creation, plain and encrypted
+streaming, approvals, GFM content with code colors, grouped activity, measured
+send motion, and the Earth/Moon welcome scene. A local development-signed IPA
+is available under ignored `artifacts/ios-parity/`; the paired iPhone must be
+connected before physical-device acceptance can be completed.
 
 ```sh
 xcodebuild -project apple/PaxWorkspace.xcodeproj -scheme PaxWorkspace \
   -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath /tmp/pax-clients-ios CODE_SIGNING_ALLOWED=NO build
-swift build --package-path apple/Packages/PaxWorkspaceKit
+swift test --package-path apple/Packages/PaxWorkspaceKit
 ```
 
 ## Design and contracts
