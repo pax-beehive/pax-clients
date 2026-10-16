@@ -87,7 +87,13 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         LoginScreen(state, vm)
         return
     }
-    BackHandler(enabled = state.selected != null) { vm.close() }
+    val newProject by vm.newProject.state.collectAsStateWithLifecycle()
+    newProject?.let { NewProjectDialog(it, vm.newProject) }
+    val newSession by vm.newSession.state.collectAsStateWithLifecycle()
+    newSession?.let { NewSessionDialog(it, vm.newSession) }
+    BackHandler(enabled = state.selected != null && newSession == null && newProject == null) {
+        vm.close()
+    }
     val workspaceOpacity = remember { Animatable(if (revealWorkspace) 0f else 1f) }
     LaunchedEffect(Unit) {
         workspaceOpacity.animateTo(1f, tween(220))
@@ -97,10 +103,11 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = workspaceOpacity.value }) {
             AdaptiveWorkspace(
                 selected = state.selected != null,
-                home = { WorkspaceHome(state, vm) },
-                detail = {
+                home = { dualPane -> WorkspaceHome(state, vm, dualPane) },
+                detail = { dualPane ->
                     val target = state.selected
-                    if (target != null) key(target.session_id) { SessionScreen(target, state, vm) }
+                    if (target != null)
+                        key(target.session_id) { SessionScreen(target, state, vm, dualPane) }
                     else
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             WorkspaceEmptyState(
@@ -252,54 +259,89 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
+private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPane: Boolean) {
     var tab by rememberSaveable { mutableStateOf("Home") }
+    var homeTab by rememberSaveable { mutableStateOf("Home") }
     var filter by rememberSaveable { mutableStateOf("") }
     var project by rememberSaveable { mutableStateOf("") }
     var signOut by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val paneColor =
+        if (dualPane) MaterialTheme.colorScheme.surfaceContainerLow
+        else MaterialTheme.colorScheme.background
     LaunchedEffect(tab) { focusManager.clearFocus() }
-    BackHandler(enabled = tab in listOf("Projects", "Devices")) { tab = "Settings" }
+    BackHandler(enabled = tab == "Devices") { tab = "Settings" }
     Scaffold(
+        containerColor = paneColor,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (tab == "Home") "Workspace" else tab,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                },
-                navigationIcon = {
-                    if (tab in listOf("Projects", "Devices"))
-                        WorkspaceIconButton(onClick = { tab = "Settings" }) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to settings")
-                        }
-                },
-                actions = {
-                    WorkspaceIconButton(onClick = { vm.refresh() }) {
-                        Icon(Icons.Outlined.Refresh, "Refresh")
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = paneColor),
+                    title = {
+                        Text(
+                            if (tab in listOf("Home", "Projects")) "Workspace" else tab,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        if (tab == "Devices")
+                            IconButton(
+                                onClick = { tab = "Settings" },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to settings")
+                            }
+                    },
+                    actions = {
+                        if (tab in listOf("Home", "Projects"))
+                            IconButton(
+                                onClick = {
+                                    if (tab == "Projects") vm.newProject.open()
+                                    else vm.newSession.open(project)
+                                },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Add,
+                                    if (tab == "Projects") "New project" else "New session",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        if (tab != "Settings")
+                            IconButton(
+                                onClick = { vm.refresh() },
+                                enabled = !state.loading,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(Icons.Outlined.Refresh, "Refresh workspace")
+                            }
+                    },
+                )
+                if (tab in listOf("Home", "Projects"))
+                    HomeViewSwitch(tab) { selected ->
+                        tab = selected
+                        homeTab = selected
                     }
-                },
-            )
+            }
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.background,
-                tonalElevation = 0.dp,
-            ) {
+            NavigationBar(containerColor = paneColor, tonalElevation = 0.dp) {
                 tabs.forEach { label ->
                     NavigationBarItem(
                         selected =
                             tab == label ||
-                                (label == "Settings" && tab in listOf("Projects", "Devices")),
-                        onClick = { tab = label },
+                                (label == "Home" && tab == "Projects") ||
+                                (label == "Settings" && tab == "Devices"),
+                        onClick = { tab = if (label == "Home") homeTab else label },
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                         colors =
                             NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
@@ -310,7 +352,12 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                         label == "Approvals" &&
                                             state.workspace.approvals.isNotEmpty()
                                     )
-                                        Badge { Text(state.workspace.approvals.size.toString()) }
+                                        Badge(
+                                            containerColor = WorkspaceAttention,
+                                            contentColor = WorkspaceOnAttention,
+                                        ) {
+                                            Text(state.workspace.approvals.size.toString())
+                                        }
                                 }
                             ) {
                                 Icon(
@@ -334,7 +381,8 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
         LazyColumn(
             Modifier.padding(padding).fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(if (dualPane && tab == "Home") 4.dp else 10.dp),
         ) {
             if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             state.error?.let { item { ErrorNotice(it) } }
@@ -358,9 +406,11 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             colors =
                                 OutlinedTextFieldDefaults.colors(
                                     unfocusedContainerColor =
-                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                        if (dualPane) MaterialTheme.colorScheme.surfaceContainerHigh
+                                        else MaterialTheme.colorScheme.surfaceContainerLow,
                                     focusedContainerColor =
-                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                        if (dualPane) MaterialTheme.colorScheme.surfaceContainerHigh
+                                        else MaterialTheme.colorScheme.surfaceContainerLow,
                                     unfocusedBorderColor = Color.Transparent,
                                     focusedBorderColor = MaterialTheme.colorScheme.outline,
                                 ),
@@ -382,15 +432,6 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(onClick = { tab = "Projects" }) {
-                                Text("Projects")
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.ArrowForward,
-                                    null,
-                                    Modifier.size(16.dp),
-                                )
-                            }
                         }
                     }
                     if (project.isNotEmpty())
@@ -411,9 +452,10 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             state.workspace.projects
                                 .firstOrNull { it.project_id == target.primary_project_id }
                                 ?.display_name,
+                            dualPane = dualPane,
                             onClick = {
                                 focusManager.clearFocus()
-                                vm.open(target)
+                                if (state.selected?.session_id != target.session_id) vm.open(target)
                             },
                         )
                     }
@@ -425,8 +467,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 else "Ready when you are",
                                 if (filter.isNotBlank() || project.isNotEmpty())
                                     "Try another search or choose a different project."
-                                else
-                                    "Start a session in your workspace, then refresh to continue it here.",
+                                else "Tap + to start a session in your workspace.",
                                 icon = Icons.Outlined.Search,
                             )
                         }
@@ -446,17 +487,20 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                         SettingsRow(
                             item.display_name,
                             "View sessions",
-                            Icons.AutoMirrored.Outlined.List,
+                            WorkspaceSymbols.Folder,
+                            iconTint = MaterialTheme.colorScheme.tertiary,
                         ) {
                             project = item.project_id
+                            filter = ""
                             tab = "Home"
+                            homeTab = "Home"
                         }
                     }
                     if (state.workspace.projects.isEmpty() && !state.loading)
                         item {
                             WorkspaceEmptyState(
                                 "No projects yet",
-                                "Your workspace projects will appear here.",
+                                "Tap + to create your first project.",
                             )
                         }
                 }
@@ -475,7 +519,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                                 Icon(
                                     WorkspaceSymbols.Computer,
                                     null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = MaterialTheme.colorScheme.secondary,
                                 )
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
@@ -532,7 +576,8 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 ) {
                                     Text(
                                         state.credential!!.email.take(1).uppercase(),
@@ -560,11 +605,6 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel) {
                             WorkspaceSymbols.Computer,
                         ) {
                             tab = "Devices"
-                        }
-                    }
-                    item {
-                        SettingsRow("Projects", "Browse your workspace", WorkspaceSymbols.Folder) {
-                            tab = "Projects"
                         }
                     }
                     item { SectionLabel("ACCOUNT") }
@@ -638,7 +678,10 @@ private fun ApprovalCard(
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatusLabel(approval.status.ifBlank { "pending" }.replaceFirstChar { it.uppercase() })
+            StatusLabel(
+                approval.status.ifBlank { "pending" }.replaceFirstChar { it.uppercase() },
+                attention = approval.status in setOf("", "pending"),
+            )
             Text(approval.title, style = MaterialTheme.typography.titleMedium)
             if (approval.description.isNotBlank())
                 Text(
@@ -686,8 +729,23 @@ private fun ApprovalCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SessionScreen(target: AgentSession, state: WorkspaceState, vm: WorkspaceViewModel) {
+private fun SessionScreen(
+    target: AgentSession,
+    state: WorkspaceState,
+    vm: WorkspaceViewModel,
+    dualPane: Boolean,
+) {
     val session by vm.session.collectAsStateWithLifecycle()
+    var showActions by remember { mutableStateOf(false) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    val currentTarget =
+        state.workspace.sessions.firstOrNull {
+            it.session_id == target.session_id &&
+                it.node_id == target.node_id &&
+                it.agent_id == target.agent_id
+        } ?: target
+    val identity = conversationIdentity(currentTarget, state.workspace.nodes)
+    if (showDetails) ConversationDetails(identity) { showDetails = false }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     SendMotionHost { motion ->
@@ -706,27 +764,86 @@ private fun SessionScreen(target: AgentSession, state: WorkspaceState, vm: Works
                         }
                     },
                     navigationIcon = {
-                        WorkspaceIconButton(onClick = vm::close) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
-                        }
+                        if (!dualPane)
+                            IconButton(onClick = vm::close, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                            }
                     },
                     actions = {
-                        WorkspaceIconButton(onClick = vm::reconnect) {
-                            Icon(Icons.Outlined.Refresh, "Reconnect")
+                        Box {
+                            IconButton(
+                                onClick = { showActions = true },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(Icons.Outlined.MoreVert, "Session actions")
+                            }
+                            DropdownMenu(
+                                expanded = showActions,
+                                onDismissRequest = { showActions = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Session details") },
+                                    leadingIcon = { Icon(WorkspaceSymbols.Computer, null) },
+                                    onClick = {
+                                        showActions = false
+                                        showDetails = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reconnect session") },
+                                    leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
+                                    enabled =
+                                        !session.busy &&
+                                            session.connection !in
+                                                setOf("Connecting", "Reconnecting"),
+                                    onClick = {
+                                        showActions = false
+                                        vm.reconnect()
+                                    },
+                                )
+                                if (dualPane)
+                                    DropdownMenuItem(
+                                        text = { Text("Close conversation") },
+                                        leadingIcon = { Icon(Icons.Outlined.Close, null) },
+                                        onClick = {
+                                            showActions = false
+                                            vm.close()
+                                        },
+                                    )
+                            }
                         }
                     },
                 )
             },
             bottomBar = {
                 if (!session.locked)
-                    MessageComposer(
-                        connection = session.connection,
-                        busy = session.busy,
-                        error = session.error,
-                        onSend = vm::send,
-                        onStop = vm::stop,
-                        motion = motion,
-                    )
+                    Column {
+                        if (session.connection in setOf("Unavailable", "Needs reconnect")) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Text(
+                                    "Connection interrupted",
+                                    Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = vm::reconnect, enabled = !session.busy) {
+                                    Text("Reconnect")
+                                }
+                            }
+                        }
+                        MessageComposer(
+                            connection = session.connection,
+                            busy = session.busy,
+                            error = session.error,
+                            onSend = vm::send,
+                            onStop = vm::stop,
+                            motion = motion,
+                        )
+                    }
             },
         ) { padding ->
             if (session.locked) {
@@ -785,6 +902,7 @@ private fun SessionScreen(target: AgentSession, state: WorkspaceState, vm: Works
             } else
                 ConversationTimeline(
                     messages = session.messages,
+                    identity = identity,
                     connection = session.connection,
                     hasOlder = session.hasOlder,
                     loadingOlder = session.loadingOlder,

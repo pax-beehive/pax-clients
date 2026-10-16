@@ -27,6 +27,15 @@ Version 0.1.12 adds immediate send feedback and renders live reply chunks direct
 see [conversation responsiveness](docs/android-conversation-responsiveness.md).
 Version 0.1.11 refines the workspace, conversation, settings and empty states using
 [reviewed Mobbin references](docs/android-visual-design.md).
+The latest local refinement clarifies dual-pane actions and reduces list clutter;
+see [foldable workspace refinement](docs/android-foldable-polish.md).
+The local build also adds [mobile session creation](docs/android-new-session.md)
+and restores the existing [Pax launcher logo](docs/android-brand-icon.md).
+Home includes [Sessions / Projects switching and project creation](docs/android-projects.md).
+The workspace uses [restrained color for actions and status](docs/android-color.md),
+with [agent and device bylines](docs/android-conversation-identity.md) in conversations.
+Agent replies now use [Markdown rendering](docs/android-markdown.md), including
+tables, task lists, highlighted code, and a compact message-copy action.
 Version 0.1.10 added real NASA Earth imagery and city lights on the night side.
 See [imagery sources and rendering](docs/earth-imagery.md). The scene uses shared-time Keplerian
 orbits and an Earth-following perspective camera. Orbital distances are in AU;

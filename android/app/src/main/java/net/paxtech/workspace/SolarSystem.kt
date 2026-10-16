@@ -9,6 +9,8 @@ internal enum class SolarKind {
     MARS,
     JUPITER,
     SATURN,
+    URANUS,
+    NEPTUNE,
 }
 
 /** AU and degrees. Fixed J2000 elements, propagated as two-body ellipses, not a live ephemeris. */
@@ -65,6 +67,10 @@ internal val solarOrbits =
             SolarOrbit(5.202887, .04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909),
         SolarKind.SATURN to
             SolarOrbit(9.53667594, .05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448),
+        SolarKind.URANUS to
+            SolarOrbit(19.18916464, .04725744, .77263783, 313.23810451, 170.95427630, 74.01692503),
+        SolarKind.NEPTUNE to
+            SolarOrbit(30.06992276, .00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574),
     )
 
 internal data class SolarBody(val kind: SolarKind, val position: Vector3, val radius: Float)
@@ -110,6 +116,8 @@ internal fun solarFrame(elapsedYears: Float): SolarFrame {
             SolarKind.MARS to .0068f,
             SolarKind.JUPITER to .140f,
             SolarKind.SATURN to .117f,
+            SolarKind.URANUS to .051f,
+            SolarKind.NEPTUNE to .049f,
         )
     return SolarFrame(
         earth,
@@ -121,6 +129,22 @@ internal fun solarFrame(elapsedYears: Float): SolarFrame {
 }
 
 internal data class SolarProjection(val x: Float, val y: Float, val scale: Float)
+
+/** Readable display spin periods, not astronomical day lengths; retrograde signs are retained. */
+internal fun planetSpin(kind: SolarKind, seconds: Float): Float {
+    val period =
+        when (kind) {
+            SolarKind.SUN -> 200f
+            SolarKind.MERCURY -> 180f
+            SolarKind.VENUS -> -220f
+            SolarKind.MARS -> 68f
+            SolarKind.JUPITER -> 32f
+            SolarKind.SATURN -> 35f
+            SolarKind.URANUS -> -44f
+            SolarKind.NEPTUNE -> 42f
+        }
+    return seconds / period * (2 * PI).toFloat()
+}
 
 /** Pinhole camera, about four Earth radii away. Objects behind it must never mirror into view. */
 internal fun projectSolarBody(position: Vector3): SolarProjection? {

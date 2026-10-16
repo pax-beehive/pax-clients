@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
-import kotlin.math.sin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 
@@ -65,18 +64,11 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
             } else arrival.snapTo(1f)
         }
     }
-    // Motion follows the system animator scale, including reduced/disabled motion.
-    val phase: State<Float> =
-        if (active) {
-            rememberInfiniteTransition(label = "satellite drift")
-                .animateFloat(
-                    0f,
-                    (Math.PI * 2).toFloat(),
-                    infiniteRepeatable(tween(42000, easing = LinearEasing)),
-                    label = "orbit time",
-                )
-        } else remember { mutableFloatStateOf(0f) }
     val solarYears = rememberSolarYears(active)
+    // Shared saved clock: stopping, backgrounding and recreation preserve the whole scene.
+    val phase = remember {
+        derivedStateOf { solarYears.value * 120f * (2f * Math.PI.toFloat()) / 42f }
+    }
     Surface(
         Modifier.fillMaxSize().onGloballyPositioned { rootOrigin = it.positionInRoot() },
         color = spaceInk,
@@ -192,10 +184,12 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                         enabled = !restoring && !departing,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        if (restoring) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(12.dp))
+                        // Equal side slots keep the label on the page's center line.
+                        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                            if (restoring)
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         }
+                        Spacer(Modifier.width(12.dp))
                         Text(
                             if (restoring) "Restoring session…"
                             else if (signedIn) "Enter workspace" else "Sign in to PaxWorkspace",
@@ -203,13 +197,14 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
                             textAlign = TextAlign.Center,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        if (!restoring) {
-                            Spacer(Modifier.width(12.dp))
-                            Icon(
-                                Icons.AutoMirrored.Outlined.ArrowForward,
-                                null,
-                                Modifier.size(20.dp),
-                            )
+                        Spacer(Modifier.width(12.dp))
+                        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                            if (!restoring)
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowForward,
+                                    null,
+                                    Modifier.size(20.dp),
+                                )
                         }
                     }
                     Spacer(Modifier.height(16.dp))
@@ -227,33 +222,6 @@ fun WelcomeScreen(signedIn: Boolean, restoring: Boolean, onEnter: () -> Unit) {
             val dissolve = ((approach.value - .68f) / .32f).coerceIn(0f, 1f)
             if (dissolve > 0f)
                 drawRect(destinationColor.copy(alpha = dissolve * dissolve * (3f - 2f * dissolve)))
-        }
-    }
-}
-
-@Composable
-private fun StarField(phase: State<Float>) {
-    Canvas(Modifier.fillMaxSize()) {
-        val glowCenter = Offset(size.width * 0.5f, size.height * 0.36f)
-        drawCircle(
-            Brush.radialGradient(
-                listOf(Color(0xFF0A1726), spaceInk.copy(alpha = 0f)),
-                glowCenter,
-                size.maxDimension * 0.55f,
-            ),
-            size.maxDimension * 0.55f,
-            glowCenter,
-        )
-        repeat(130) { index ->
-            val x = ((index * 0.618034f + 0.13f) % 1f) * size.width
-            val y = ((index * 0.414214f + 0.07f) % 1f) * size.height
-            val shimmer = (sin(phase.value * 3f + index * 1.7f) + 1f) * 0.5f
-            val opacity = (0.10f + shimmer * 0.28f) * if (y > size.height * 0.57f) 0.35f else 1f
-            drawCircle(
-                Color(0xFFCADBFF).copy(alpha = opacity),
-                if (index % 7 == 0) 1.dp.toPx() else 0.5.dp.toPx(),
-                Offset(x, y),
-            )
         }
     }
 }

@@ -50,7 +50,12 @@ class ConversationUiTest {
                 "Streaming paragraph $it with enough text to wrap on a narrow phone."
             }
         compose.runOnIdle { messages.value = listOf(message("live", long)) }
-        compose.onNodeWithText(long).assertExists()
+        // Markdown soft line breaks become spaces; wait for the background parse before layout
+        // checks.
+        val rendered = long.replace("\n", " ")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText(rendered).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Expand").assertDoesNotExist()
         compose.runOnIdle { height.value = 280.dp }
         compose.runOnIdle {
@@ -146,4 +151,53 @@ class ConversationUiTest {
     }
 
     private fun message(id: String, text: String) = ChatItem(id, "turn", "agent", text)
+
+    @Test
+    fun activityIsCollapsedButFailuresAndFullDetailsRemainAccessible() {
+        val messages =
+            mutableStateOf(
+                listOf(
+                    ChatItem("thought", "turn", "thought", "Private fixture reasoning"),
+                    ChatItem(
+                        "tool",
+                        "turn",
+                        "tool",
+                        "Full bash output\n".repeat(100),
+                        "Bash · run checks",
+                        "failed",
+                    ),
+                    message("answer", "The checks found an error."),
+                )
+            )
+        compose.setContent {
+            WorkspaceTheme {
+                ConversationTimeline(
+                    messages.value,
+                    "Connected",
+                    false,
+                    false,
+                    {},
+                    Modifier.width(360.dp).height(600.dp),
+                )
+            }
+        }
+        compose.onNodeWithText("Failed").assertIsDisplayed()
+        compose.onNodeWithText("Private fixture reasoning").assertDoesNotExist()
+        compose.onNodeWithText("Full bash output", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("activity-group:thought").performClick()
+        compose.onNodeWithTag("activity-step:thought").performClick()
+        compose.onNodeWithText("Private fixture reasoning").assertIsDisplayed()
+        compose.onNodeWithTag("activity-step:tool").performClick()
+        compose.onNodeWithText("Full bash output\n".repeat(100)).assertExists()
+        compose.runOnIdle {
+            messages.value =
+                messages.value.map {
+                    if (it.id == "tool") it.copy(text = "Updated full output") else it
+                }
+        }
+        compose.onNodeWithText("Updated full output").assertExists()
+        compose.onNodeWithTag("activity-group:thought").performClick()
+        compose.onNodeWithText("Updated full output").assertDoesNotExist()
+        compose.onNodeWithText("The checks found an error.").assertIsDisplayed()
+    }
 }

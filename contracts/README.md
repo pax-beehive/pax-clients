@@ -3,6 +3,12 @@
 This directory is the cross-platform contract boundary. No speculative API
 schema is checked in. Backend source remains authoritative.
 
+Android project creation uses `POST /api/v1/user/self/projects` with
+`display_name` and reads `data.project`. Verified against
+`pax-manager-android-native/api/pax_manager.thrift` and
+`internal/manager/userapi/project.go` (100 UTF-8-byte name limit, server-assigned
+ID). The native gateway adds only that exact POST to its authenticated allowlist.
+
 ## Source map
 
 Paths below are relative to sibling checkouts in the current Pax workspace.
@@ -83,6 +89,18 @@ The fixture includes deliberately public test keys, never account data. Tests
 check envelope decryption and P-256 root-key unwrapping. Android-generated
 ciphertext is separately checked by `scripts/verify-web-interop.mjs` using the
 original web implementation.
+
+## Android session creation
+
+Conversation identity uses the existing `AgentSession.agent_type` and matching
+`Node.name` / `Node.hostname` fields from `api/pax_manager.thrift` in the Manager
+checkout. See [conversation identity](../docs/android-conversation-identity.md).
+
+The local Android creation flow uses the existing node-scoped session POST,
+node Agent GET and project target GET. Request fields and provenance are recorded
+in [mobile session creation](../docs/android-new-session.md). The native gateway
+allowlist additions passed validation and were deployed after explicit user approval;
+see the linked document for the active version and live checks.
 
 ## iOS native client
 

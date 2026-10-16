@@ -105,6 +105,7 @@ data class AgentSession(
     val workspace_roots: List<String> = emptyList(),
     val primary_project_id: String = "",
     val metadata: JsonObject = JsonObject(emptyMap()),
+    val agent_type: String = "",
 ) {
     val title
         get() = name.ifBlank { reported_name.ifBlank { "Agent session" } }

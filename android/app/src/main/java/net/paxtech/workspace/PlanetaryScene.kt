@@ -52,13 +52,16 @@ internal fun PlanetaryScene(
     val satellites = remember { (0..2).map(::satelliteMesh) }
     val planet = rememberPlanetPainter(forceSoftware)
     Canvas(Modifier.fillMaxSize()) {
-        val time = phase.value
+        // One saved clock drives every moving object; rates below are art-directed for readability.
+        val seconds = solarYears?.value?.times(120f) ?: (phase.value * 42f / (2f * PI.toFloat()))
+        val time = seconds * (2f * PI.toFloat()) / 42f
+        val moon = moonPose(seconds)
         val reveal = arrival.value
         val frame = viewport ?: Rect(Offset.Zero, size)
         if (frame.width <= 0f || frame.height <= 0f) return@Canvas
         val flight = approach?.value ?: 0f
         val solar = solarFrame(solarYears?.value ?: 0f)
-        val restingUnit = min(frame.width, frame.height) / 4.95f * (0.86f + reveal * 0.14f)
+        val restingUnit = min(frame.width, frame.height) / 7.4f * (0.86f + reveal * 0.14f)
         // Exponential dolly keeps the approach gentle initially and fills any screen aspect ratio.
         val destinationRadius = hypot(size.width, size.height) * 0.7f
         val unit = restingUnit * (destinationRadius / (restingUnit * 1.34f)).pow(flight)
@@ -92,31 +95,31 @@ internal fun PlanetaryScene(
                 }
                 drawPath(
                     path,
-                    orbit.color.copy(alpha = reveal * if (front) 0.14f else 0.035f),
+                    orbit.color.copy(alpha = reveal * if (front) 0.035f else 0.012f),
                     style = Stroke(0.55.dp.toPx()),
                 )
-                repeat(32) { index ->
-                    val angle = index * 2.39996f + time * orbit.speed
-                    val seed = (index * 0.618034f) % 1f
-                    val v = orbit.position(angle)
-                    if ((v.z >= 0f) != front) return@repeat
-                    val scatter = 1f + (seed - 0.5f) * 0.065f + (1f - reveal) * 1.8f
-                    val p = project(Vector3(v.x * scatter, v.y * scatter, v.z))
-                    drawCircle(
-                        orbit.color.copy(alpha = reveal * (0.07f + seed * 0.24f)),
-                        (0.25f + seed * 0.45f).dp.toPx(),
-                        p,
-                    )
-                }
             }
         }
         fun satellitePass(front: Boolean) {
-            orbits
-                .map { it to it.position(time * it.speed + it.offset) }
+            // Include the Moon in depth ordering, so it can pass behind Earth and spacecraft.
+            val bodies: List<Pair<Orbit?, Vector3>> =
+                orbits.map { it to it.position(time * it.speed + it.offset) } +
+                    (null to moon.position)
+            bodies
                 .filter { (_, v) -> (v.z >= 0f) == front }
                 .sortedBy { it.second.z }
                 .forEach { (orbit, v) ->
                     val position = project(v)
+                    if (orbit == null) {
+                        drawMoon(
+                            moon,
+                            position,
+                            unit * .366f * 10f / (10f - v.z),
+                            solar.sunlight,
+                            reveal,
+                        )
+                        return@forEach
+                    }
                     val perspective = 10f / (10f - v.z)
                     val satelliteUnit = unit * orbit.scale * perspective
                     drawSpacecraft(
@@ -129,20 +132,6 @@ internal fun PlanetaryScene(
                         orbit.color,
                         solar.sunlight,
                     )
-                    // Tapered wake is brighter near the spacecraft, faint at its far end.
-                    repeat(18) { step ->
-                        val angle = time * orbit.speed + orbit.offset
-                        val a = project(orbit.position(angle - step * 0.018f * orbit.speed.sign))
-                        val b =
-                            project(orbit.position(angle - (step + 1) * 0.018f * orbit.speed.sign))
-                        drawLine(
-                            orbit.color.copy(alpha = reveal * 0.28f * (1f - step / 18f)),
-                            a,
-                            b,
-                            0.8.dp.toPx(),
-                            StrokeCap.Round,
-                        )
-                    }
                 }
         }
         orbitPass(false)
@@ -154,7 +143,7 @@ internal fun PlanetaryScene(
                     origin.x,
                     origin.y,
                     globeRadius,
-                    time,
+                    seconds * (2f * PI.toFloat()) / 64f,
                     reveal,
                     solar.sunlight,
                 )

@@ -168,7 +168,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
             if (older) {
                 val prefix = Timeline()
                 messages.forEach(prefix::history)
-                timeline.prepend(prefix.snapshot())
+                timeline.prepend(prefix)
             } else {
                 timeline.clear()
                 messages.forEach(timeline::history)
@@ -315,7 +315,7 @@ constructor(private val repo: WorkspaceRepository, private val pairing: DevicePa
             after = latest
         } while (page.flag("has_more"))
         mutex.withLock {
-            if (older) timeline.prepend(collected.snapshot())
+            if (older) timeline.prepend(collected)
             else {
                 timeline.replaceWith(collected)
                 cursor = head!!

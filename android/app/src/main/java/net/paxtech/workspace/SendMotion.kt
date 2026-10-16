@@ -72,11 +72,15 @@ internal class SendMotionState(val enabled: Boolean = true) {
         // A long draft may extend off-screen. Reveal it normally instead of flying a huge surface
         // over the toolbar, keyboard or the other pane of a foldable.
         if (
-            bounds.height > visible.height * .7f ||
+            bounds.isEmpty ||
+                bounds.height > visible.height * .7f ||
                 bounds.top < visible.top ||
                 bounds.bottom > visible.bottom
         ) {
-            flight = null
+            // The multiline composer is still shrinking on the first layout after send.
+            // Let the existing destination timeout wait for a visible landing rectangle;
+            // once a flight has started, moving it out of view still settles immediately.
+            if (flight?.destination != null) flight = null
         } else flight?.destination = bounds
     }
 
@@ -113,7 +117,7 @@ private fun SendBubbleOverlay(state: SendMotionState) {
     val progress = remember(flight) { Animatable(0f) }
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.bodyMedium
-    val ink = MaterialTheme.colorScheme.onSurface
+    val ink = UserMessageInk
     val fill = MaterialTheme.colorScheme.surfaceContainerHigh
     val density = androidx.compose.ui.platform.LocalDensity.current
     val inset = with(density) { 16.dp.toPx() }
@@ -172,7 +176,7 @@ private fun SendBubbleOverlay(state: SendMotionState) {
             lerp(flight.origin, flight.destination ?: flight.origin, amount)
                 .translate(-parent.topLeft)
         drawRoundRect(
-            fill,
+            androidx.compose.ui.graphics.lerp(fill, UserMessageFill, amount),
             box.topLeft,
             box.size,
             CornerRadius(radius.coerceAtMost(box.height / 2)),

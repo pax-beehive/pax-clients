@@ -39,6 +39,49 @@ constructor(
     private val mutable = MutableStateFlow(WorkspaceState())
     val state = mutable.asStateFlow()
     val session = runtime.state
+    val newProject =
+        NewProjectController(
+            repo,
+            viewModelScope,
+            onCreated = { created ->
+                refreshJob?.cancel()
+                mutable.update { old ->
+                    old.copy(
+                        loading = false,
+                        error = null,
+                        workspace =
+                            old.workspace.copy(
+                                projects =
+                                    listOf(created) +
+                                        old.workspace.projects.filterNot {
+                                            it.project_id == created.project_id
+                                        }
+                            ),
+                    )
+                }
+            },
+            onUncertainDismissed = {
+                refreshJob?.cancel()
+                refreshJob = null
+                refresh()
+            },
+        )
+    val newSession =
+        NewSessionController(repo, viewModelScope) { created ->
+            mutable.update {
+                it.copy(
+                    workspace =
+                        it.workspace.copy(
+                            sessions =
+                                listOf(created) +
+                                    it.workspace.sessions.filterNot { old ->
+                                        old.session_id == created.session_id
+                                    }
+                        )
+                )
+            }
+            open(created)
+        }
     private var readJob: Job? = null
     private var sendJob: Job? = null
     private var loginJob: Job? = null
@@ -284,6 +327,10 @@ constructor(
     }
 
     fun signOut() {
+        if (newSession.state.value?.creating == true || newProject.state.value?.creating == true)
+            return
+        newProject.dismiss()
+        newSession.dismiss()
         launchAction {
             readJob?.cancelAndJoin()
             sendJob?.cancelAndJoin()

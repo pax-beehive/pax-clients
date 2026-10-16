@@ -17,6 +17,7 @@ class Timeline {
     private val items = linkedMapOf<String, ChatItem>()
     private val chunks = mutableMapOf<String, StringBuilder>()
     private val changedChunks = mutableSetOf<String>()
+    private val historyIds = mutableMapOf<String, List<String>>()
     private var segment = 0
     private var lastChunk = ""
 
@@ -32,6 +33,7 @@ class Timeline {
         items.clear()
         chunks.clear()
         changedChunks.clear()
+        historyIds.clear()
         segment = 0
         lastChunk = ""
     }
@@ -40,6 +42,7 @@ class Timeline {
         clear()
         other.snapshot()
         items.putAll(other.items)
+        historyIds.putAll(other.historyIds)
         segment = other.segment
         lastChunk = other.lastChunk
     }
@@ -70,20 +73,68 @@ class Timeline {
     fun history(value: JsonObject) {
         val id = value.text("message_id")
         if (id.isBlank()) return
-        chunks.remove(id)
-        changedChunks.remove(id)
+        (historyIds.remove(id) ?: listOf(id)).forEach(::remove)
         val tool = value.obj("tool")
-        val parts = value.array("parts").mapNotNull { it as? JsonObject }
+        val parts =
+            value
+                .array("parts")
+                .mapNotNull { it as? JsonObject }
+                .sortedBy { it["part_index"]?.jsonPrimitive?.intOrNull ?: 0 }
         val text =
             parts
                 .joinToString("\n") { it.text("text") }
                 .ifBlank { value.obj("raw_json").text("text") }
+        val thoughtKinds =
+            setOf(
+                "agent_thought",
+                "agent_thought_chunk",
+                "thought",
+                "thinking",
+                "reasoning",
+                "progress",
+            )
         val role =
             if (tool.isNotEmpty()) "tool"
+            else if (
+                value.text("message_type").lowercase() in thoughtKinds ||
+                    value.text("role").lowercase() in thoughtKinds
+            )
+                "thought"
             else value.text("role", value.text("message_type", "agent"))
         if (text.isBlank() && tool.isEmpty()) return
-        items[id] =
-            ChatItem(id, value.text("turn_id"), role, text, tool.text("title"), tool.text("status"))
+        // Stored assistant messages may contain both thought and answer parts. Preserve
+        // their order and keep answer text visible instead of folding the entire message.
+        val segments = mutableListOf<Pair<String, String>>()
+        if (
+            role in setOf("assistant", "agent") &&
+                parts.any { it.text("part_type").lowercase() in thoughtKinds }
+        ) {
+            parts.forEach { part ->
+                val partRole =
+                    if (part.text("part_type").lowercase() in thoughtKinds) "thought" else role
+                val partText = part.text("text")
+                if (partText.isNotBlank()) {
+                    if (segments.lastOrNull()?.first == partRole) {
+                        val old = segments.removeAt(segments.lastIndex)
+                        segments.add(partRole to "${old.second}\n$partText")
+                    } else segments.add(partRole to partText)
+                }
+            }
+        } else segments.add(role to text)
+        historyIds[id] =
+            segments.mapIndexed { index, (partRole, partText) ->
+                val partId = if (index == 0) id else "$id:part:$index"
+                items[partId] =
+                    ChatItem(
+                        partId,
+                        value.text("turn_id"),
+                        partRole,
+                        partText,
+                        tool.text("title"),
+                        tool.text("status"),
+                    )
+                partId
+            }
     }
 
     fun frame(frame: JsonObject, turn: String) {
@@ -163,10 +214,11 @@ class Timeline {
         }
     }
 
-    fun prepend(older: List<ChatItem>) {
+    fun prepend(older: Timeline) {
         val current = snapshot().associateBy { it.id }
         items.clear()
-        older.forEach { items[it.id] = it }
+        older.snapshot().forEach { items[it.id] = it }
         items.putAll(current)
+        older.historyIds.forEach { (id, parts) -> historyIds.putIfAbsent(id, parts) }
     }
 }

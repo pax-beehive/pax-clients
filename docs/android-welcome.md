@@ -1,5 +1,8 @@
 # Android welcome and controls
 
+The latest local build adds [the Moon, shared scene timing and a richer starfield](android-moon-stars.md).
+That document supersedes the older composition and local-animation timing below.
+
 ## Real Earth and night lights (0.1.10)
 
 The welcome globe now uses NASA Blue Marble land/ocean imagery, a separate
@@ -311,3 +314,19 @@ Screenshots, test reports, and install proof: `artifacts/validation-0.1.3/`
 
 The existing real-account emulator was not changed. No gateway deployment was
 needed, and no Git remote was pushed.
+
+## Welcome label alignment follow-up (2026-10-14)
+
+The trailing arrow previously took width only on the right, so the centered label
+was offset left relative to the page copy. The CTA now reserves matching 20 dp
+side slots and 12 dp gaps. The label stays on the page center line for signed-out,
+signed-in and restoring states; the progress indicator uses the leading slot.
+
+Debug build and lint passed. The four existing WelcomeTransitionTest cases passed
+at compact (1080x2400, density 420) and expanded (1800x2100, density 360) sizes.
+Signed-out screenshots at both widths were visually checked. Artifacts and both
+state screenshots are under `artifacts/welcome-alignment-2026-10-14/`.
+APK SHA-256: `3ae89cd4fde2c8003078314e8aff9f4b9aeb8edc5bacfdd8c2ed8d2e77379494`.
+Installed with `adb install -r` over Wi-Fi on Pixel 11 Pro Fold (success, device
+update time 2026-10-14 22:17:55). Installed APK hash matches the artifact above;
+existing data is retained. Version remains unpublished 0.1.13 (14).

@@ -3,6 +3,7 @@ package net.paxtech.workspace
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -70,8 +71,8 @@ internal fun panePlan(
 @Composable
 internal fun AdaptiveWorkspace(
     selected: Boolean,
-    home: @Composable () -> Unit,
-    detail: @Composable () -> Unit,
+    home: @Composable (dualPane: Boolean) -> Unit,
+    detail: @Composable (dualPane: Boolean) -> Unit,
 ) {
     val activity = LocalActivity.current
     val flow: Flow<WindowLayoutInfo?> =
@@ -86,33 +87,7 @@ internal fun AdaptiveWorkspace(
     val density = LocalDensity.current.density
     var x by remember { mutableIntStateOf(0) }
     var y by remember { mutableIntStateOf(0) }
-    // Both slots keep their composition identity while resized or temporarily hidden.
-    // Drafts, list position and filters therefore survive fold/unfold without reparenting.
-    Layout(
-        modifier =
-            Modifier.fillMaxSize()
-                .background(MaterialTheme.colorScheme.outlineVariant)
-                .onGloballyPositioned {
-                    x = it.positionInWindow().x.toInt()
-                    y = it.positionInWindow().y.toInt()
-                },
-        content = {
-            Box(
-                Modifier.fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .testTag("workspace-list")
-            ) {
-                home()
-            }
-            Box(
-                Modifier.fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .testTag("workspace-detail")
-            ) {
-                detail()
-            }
-        },
-    ) { measurables, constraints ->
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         val hinge =
             fold?.bounds?.let { PaneBounds(it.left - x, it.top - y, it.right - x, it.bottom - y) }
         val plan =
@@ -124,16 +99,46 @@ internal fun AdaptiveWorkspace(
                 hinge,
                 fold?.orientation != FoldingFeature.Orientation.HORIZONTAL,
             )
-        val areas = listOf(plan.home, plan.detail)
-        val children =
-            measurables.mapIndexed { index, measurable ->
-                val area =
-                    areas[index] ?: PaneBounds(0, 0, constraints.maxWidth, constraints.maxHeight)
-                measurable.measure(Constraints.fixed(area.width, area.height))
-            }
-        layout(constraints.maxWidth, constraints.maxHeight) {
-            areas.forEachIndexed { index, area ->
-                if (area != null) children[index].place(area.left, area.top)
+        val dualPane = plan.home != null && plan.detail != null
+        // Both slots keep their composition identity while resized or temporarily hidden.
+        // Drafts, list position and filters therefore survive fold/unfold without reparenting.
+        Layout(
+            modifier =
+                Modifier.fillMaxSize()
+                    .background(MaterialTheme.colorScheme.outlineVariant)
+                    .onGloballyPositioned {
+                        x = it.positionInWindow().x.toInt()
+                        y = it.positionInWindow().y.toInt()
+                    },
+            content = {
+                Box(
+                    Modifier.fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .testTag("workspace-list")
+                ) {
+                    home(dualPane)
+                }
+                Box(
+                    Modifier.fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .testTag("workspace-detail")
+                ) {
+                    detail(dualPane)
+                }
+            },
+        ) { measurables, constraints ->
+            val areas = listOf(plan.home, plan.detail)
+            val children =
+                measurables.mapIndexed { index, measurable ->
+                    val area =
+                        areas[index]
+                            ?: PaneBounds(0, 0, constraints.maxWidth, constraints.maxHeight)
+                    measurable.measure(Constraints.fixed(area.width, area.height))
+                }
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                areas.forEachIndexed { index, area ->
+                    if (area != null) children[index].place(area.left, area.top)
+                }
             }
         }
     }

@@ -39,6 +39,7 @@ class WelcomeTransitionTest {
             }
         }
         compose.mainClock.advanceTimeBy(2500)
+        capture("welcome-aligned-signed-in")
         compose.onNodeWithText("Enter workspace").performTouchInput { doubleClick() }
         compose.mainClock.advanceTimeBy(480)
         assertEquals(0, entries.intValue)
@@ -54,8 +55,22 @@ class WelcomeTransitionTest {
         var entries = 0
         compose.setContent { WorkspaceTheme { WelcomeScreen(false, false) { entries++ } } }
         compose.mainClock.advanceTimeBy(2500)
+        capture("welcome-aligned-signed-out")
         compose.onNodeWithText("Sign in to PaxWorkspace").performClick()
         assertEquals(1, entries)
+    }
+
+    @Test
+    fun lunarOrbitAndStarsRemainVisibleAcrossTheCycle() {
+        compose.setContent { WorkspaceTheme { WelcomeScreen(false, false) {} } }
+        compose.mainClock.advanceTimeBy(2500)
+        compose.onNodeWithTag("welcome-starfield").assertExists()
+        capture("moon-stars-00")
+        repeat(4) { index ->
+            compose.mainClock.advanceTimeBy(20000)
+            compose.onNodeWithText("Sign in to PaxWorkspace").assertIsDisplayed().assertIsEnabled()
+            capture("moon-stars-${(index + 1) * 20}")
+        }
     }
 
     @Test

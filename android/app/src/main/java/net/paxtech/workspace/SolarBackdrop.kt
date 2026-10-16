@@ -32,7 +32,16 @@ internal fun DrawScope.drawSolarBackdrop(
             val opacity = alpha
             if (opacity <= 0f) return@forEach
             if (body.kind == SolarKind.SUN) drawSun(center, radius, opacity, time)
-            else drawPlanet(body.kind, center, radius, opacity, body.position, frame.earth)
+            else
+                drawPlanet(
+                    body.kind,
+                    center,
+                    radius,
+                    opacity,
+                    body.position,
+                    frame.earth,
+                    planetSpin(body.kind, time * 42f / (2f * PI.toFloat())),
+                )
         }
 }
 
@@ -93,6 +102,7 @@ private fun DrawScope.drawPlanet(
     alpha: Float,
     position: Vector3,
     earth: Vector3,
+    spin: Float,
 ) {
     val base =
         when (kind) {
@@ -100,6 +110,8 @@ private fun DrawScope.drawPlanet(
             SolarKind.VENUS -> Color(0xFFE9C99D)
             SolarKind.MARS -> Color(0xFFC17D5B)
             SolarKind.JUPITER -> Color(0xFFCEB49C)
+            SolarKind.URANUS -> Color(0xFF9BCED1)
+            SolarKind.NEPTUNE -> Color(0xFF648ACD)
             else -> Color(0xFFC4B895)
         }
     fun rings(front: Boolean) {
@@ -129,8 +141,17 @@ private fun DrawScope.drawPlanet(
             addOval(Rect(center - Offset(radius, radius), Size(radius * 2f, radius * 2f)))
         }
     clipPath(disc) {
-        rotate(-14f, center) {
-            if (kind == SolarKind.JUPITER || kind == SolarKind.SATURN || kind == SolarKind.VENUS) {
+        rotate(if (kind == SolarKind.URANUS) 82f else -14f, center) {
+            if (
+                kind in
+                    setOf(
+                        SolarKind.JUPITER,
+                        SolarKind.SATURN,
+                        SolarKind.VENUS,
+                        SolarKind.URANUS,
+                        SolarKind.NEPTUNE,
+                    )
+            ) {
                 repeat(13) { i ->
                     val latitude = (i / 12f - .5f) * 2f
                     val y = center.y + radius * latitude
@@ -138,40 +159,55 @@ private fun DrawScope.drawPlanet(
                         Path().apply {
                             repeat(33) { step ->
                                 val x = -1.1f + step * 2.2f / 32f
-                                val wave = sin(x * 9f + i * 2.1f) * .022f + sin(x * 23f - i) * .008f
+                                val longitude = asin(x.coerceIn(-1f, 1f)) - spin
+                                val wave =
+                                    sin(longitude * 9f + i * 2.1f) * .022f +
+                                        sin(longitude * 23f - i) * .008f
                                 val py = y + radius * (wave + .10f * (1f - x * x))
                                 if (step == 0) moveTo(center.x + x * radius, py)
                                 else lineTo(center.x + x * radius, py)
                             }
                         }
-                    val color = if (i % 3 == 0) Color(0xFF86644F) else Color(0xFFF4E6C8)
+                    val icy = kind in setOf(SolarKind.URANUS, SolarKind.NEPTUNE)
+                    val color =
+                        if (icy) Color(0xFFE3F5FF)
+                        else if (i % 3 == 0) Color(0xFF86644F) else Color(0xFFF4E6C8)
                     drawPath(
                         path,
-                        color.copy(alpha = alpha * if (kind == SolarKind.VENUS) .12f else .30f),
+                        color.copy(
+                            alpha = alpha * if (kind == SolarKind.VENUS || icy) .12f else .30f
+                        ),
                         style = Stroke(radius * (.07f + (i % 3) * .035f)),
                     )
                 }
-                if (kind == SolarKind.JUPITER)
+                val spotLongitude = spin - .22f
+                val spotCenter = center + Offset(sin(spotLongitude) * radius * .92f, radius * .325f)
+                val spotWidth = radius * .42f * cos(spotLongitude).coerceAtLeast(0f)
+                if (kind == SolarKind.JUPITER && spotWidth > 0f)
                     drawOval(
                         Brush.radialGradient(
                             listOf(
                                 Color(0xFFB47C61).copy(alpha = alpha * .8f),
                                 Color(0xFFDCB99A).copy(alpha = alpha * .15f),
                             ),
-                            center + Offset(-radius * .21f, radius * .325f),
+                            spotCenter,
                             radius * .22f,
                         ),
-                        center + Offset(-radius * .42f, radius * .23f),
-                        Size(radius * .42f, radius * .19f),
+                        spotCenter - Offset(spotWidth / 2, radius * .095f),
+                        Size(spotWidth, radius * .19f),
                     )
             } else {
                 repeat(9) { i ->
-                    val angle = i * 2.4f
-                    val r = sqrt((i + .5f) / 9f) * radius * .86f
-                    drawCircle(
+                    val longitude = i * 2.4f + spin
+                    val latitude = -.7f + i / 8f * 1.4f
+                    val facing = cos(longitude)
+                    if (facing <= 0f) return@repeat
+                    val r = radius * (.10f + i % 3 * .025f)
+                    val p = center + Offset(sin(longitude) * cos(latitude), sin(latitude)) * radius
+                    drawOval(
                         Color(0xFF3B3631).copy(alpha = .16f * alpha),
-                        radius * (.10f + i % 3 * .025f),
-                        center + Offset(cos(angle), sin(angle)) * r,
+                        p - Offset(r * facing, r),
+                        Size(r * facing * 2, r * 2),
                     )
                 }
             }

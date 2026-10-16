@@ -68,6 +68,42 @@ class PlanetRenderingTest {
         assertNightAndDay(true)
     }
 
+    @Test
+    fun moonTerrainRotatesAndSunControlsItsPhase() {
+        val seconds = mutableFloatStateOf(0f)
+        val light = mutableStateOf(Vector3(0f, 0f, 1f))
+        compose.setContent {
+            Canvas(Modifier.size(300.dp).testTag("planet")) {
+                drawRect(Color.Black)
+                drawMoon(
+                    moonPose(seconds.floatValue),
+                    center,
+                    size.minDimension * .35f,
+                    light.value,
+                    1f,
+                )
+            }
+        }
+        val first = capture("moon-near-side")
+        compose.runOnIdle { seconds.floatValue = 40f }
+        val turned = capture("moon-far-side")
+        var changed = 0
+        for (y in first.height / 3 until first.height * 2 / 3 step 3) {
+            for (x in first.width / 3 until first.width * 2 / 3 step 3) {
+                if (first.getPixel(x, y) != turned.getPixel(x, y)) changed++
+            }
+        }
+        assertTrue("Lunar terrain must turn with its Earth-facing frame", changed > 100)
+        compose.runOnIdle { light.value = Vector3(0f, 0f, -1f) }
+        val dark = capture("moon-night")
+        val x = dark.width / 2
+        val y = dark.height / 2
+        assertTrue(
+            android.graphics.Color.red(dark.getPixel(x, y)) <
+                android.graphics.Color.red(turned.getPixel(x, y)) / 3
+        )
+    }
+
     private fun assertNightAndDay(software: Boolean) {
         val light = mutableStateOf(Vector3(0f, 0f, -1f))
         showPlanet(software, mutableFloatStateOf(0f), light)

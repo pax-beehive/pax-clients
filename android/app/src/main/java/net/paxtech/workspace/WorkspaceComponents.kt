@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,8 +27,8 @@ import net.paxtech.workspace.data.AgentSession
 /** The quiet orbital signature carries the welcome scene into the workspace. */
 @Composable
 internal fun OrbitMark(modifier: Modifier = Modifier) {
-    val ink = MaterialTheme.colorScheme.onSurface
-    val muted = MaterialTheme.colorScheme.outline
+    val ink = MaterialTheme.colorScheme.primary
+    val muted = MaterialTheme.colorScheme.secondary.copy(alpha = .55f)
     Canvas(modifier.size(56.dp)) {
         drawCircle(ink, size.minDimension * .12f)
         rotate(-32f) {
@@ -55,15 +57,20 @@ internal fun WorkspaceEmptyState(
     ) {
         if (icon == null) OrbitMark()
         else
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
                 Icon(
                     icon,
                     null,
                     Modifier.padding(18.dp).size(28.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.secondary,
                 )
             }
-        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
         Text(
             description,
             Modifier.widthIn(max = 320.dp),
@@ -75,23 +82,19 @@ internal fun WorkspaceEmptyState(
 }
 
 @Composable
-internal fun StatusLabel(label: String, active: Boolean = false) {
+internal fun StatusLabel(label: String, active: Boolean = false, attention: Boolean = false) {
+    val ink =
+        when {
+            attention -> WorkspaceAttention
+            active -> WorkspaceSuccess
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            Modifier.size(5.dp)
-                .background(
-                    if (active) Color(0xFFA5D6B5) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    CircleShape,
-                )
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Box(Modifier.size(5.dp).background(ink, CircleShape))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = ink)
     }
 }
 
@@ -100,18 +103,19 @@ internal fun SessionRow(
     target: AgentSession,
     selected: Boolean,
     projectName: String?,
+    dualPane: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { this.selected = selected },
         shape = MaterialTheme.shapes.large,
         color =
-            if (selected) MaterialTheme.colorScheme.surfaceContainerHigh
-            else MaterialTheme.colorScheme.surfaceContainerLow,
+            if (selected) MaterialTheme.colorScheme.primaryContainer
+            else if (dualPane) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
-            Modifier.padding(16.dp),
+            Modifier.padding(if (dualPane) 12.dp else 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top,
         ) {
@@ -119,7 +123,9 @@ internal fun SessionRow(
                 WorkspaceSymbols.Agent,
                 null,
                 Modifier.padding(top = 2.dp).size(22.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint =
+                    if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(
@@ -137,7 +143,7 @@ internal fun SessionRow(
                 else if (target.preview.isNotBlank())
                     Text(
                         target.preview,
-                        maxLines = 2,
+                        maxLines = if (dualPane) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -154,24 +160,31 @@ internal fun SessionRow(
                         Text(
                             projectName,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.tertiary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                 }
             }
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowForward,
-                null,
-                Modifier.padding(top = 2.dp).size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!dualPane)
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowForward,
+                    null,
+                    Modifier.padding(top = 2.dp).size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
         }
     }
 }
 
 @Composable
-internal fun SettingsRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+internal fun SettingsRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color = MaterialTheme.colorScheme.secondary,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.large,
@@ -182,12 +195,7 @@ internal fun SettingsRow(title: String, subtitle: String, icon: ImageVector, onC
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Icon(
-                icon,
-                null,
-                Modifier.size(22.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Icon(icon, null, Modifier.size(22.dp), tint = iconTint)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(

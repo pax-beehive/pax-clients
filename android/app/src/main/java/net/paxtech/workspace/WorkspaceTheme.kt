@@ -18,33 +18,41 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Shared visual tokens from pax-console's globals.css, adapted to native controls. */
+/** Dark workspace surfaces with restrained color for actions, identity and status. */
+internal val UserMessageFill = Color(0xFF29435E)
+internal val UserMessageInk = Color(0xFFEDF4FC)
+internal val WorkspaceSuccess = Color(0xFF8BD5B2)
+internal val WorkspaceAttention = Color(0xFFF0C285)
+internal val WorkspaceOnAttention = Color(0xFF30210F)
+
 private val workspaceColors =
     darkColorScheme(
-        primary = Color(0xFFDDDDDD),
-        onPrimary = Color(0xFF141414),
-        primaryContainer = Color(0xFF303030),
-        onPrimaryContainer = Color(0xFFF1F1EF),
-        secondary = Color(0xFFADADAA),
-        onSecondary = Color(0xFF141414),
-        secondaryContainer = Color(0xFF242424),
-        onSecondaryContainer = Color(0xFFF1F1EF),
-        tertiary = Color(0xFFB8B8B8),
-        onTertiary = Color(0xFF141414),
+        primary = Color(0xFF9ABFFF),
+        onPrimary = Color(0xFF102544),
+        primaryContainer = Color(0xFF263F63),
+        onPrimaryContainer = Color(0xFFDCE9FF),
+        secondary = Color(0xFF87D8C8),
+        onSecondary = Color(0xFF102F29),
+        secondaryContainer = Color(0xFF203D37),
+        onSecondaryContainer = Color(0xFFCCF4E9),
+        tertiary = Color(0xFFEAB890),
+        onTertiary = Color(0xFF3B2716),
+        tertiaryContainer = Color(0xFF463426),
+        onTertiaryContainer = Color(0xFFFFDFC5),
         background = Color(0xFF141414),
         onBackground = Color(0xFFF1F1EF),
         surface = Color(0xFF141414),
         onSurface = Color(0xFFF1F1EF),
-        surfaceVariant = Color(0xFF242424),
-        onSurfaceVariant = Color(0xFFADADAA),
+        surfaceVariant = Color(0xFF252B35),
+        onSurfaceVariant = Color(0xFFAEB8C6),
         surfaceContainerLowest = Color(0xFF141414),
-        surfaceContainerLow = Color(0xFF1C1C1C),
-        surfaceContainer = Color(0xFF1C1C1C),
-        surfaceContainerHigh = Color(0xFF242424),
-        surfaceContainerHighest = Color(0xFF303030),
+        surfaceContainerLow = Color(0xFF1B1F27),
+        surfaceContainer = Color(0xFF1B1F27),
+        surfaceContainerHigh = Color(0xFF252B35),
+        surfaceContainerHighest = Color(0xFF303A48),
         surfaceTint = Color.Transparent,
-        outline = Color(0xFF575754),
-        outlineVariant = Color(0xFF30302E),
+        outline = Color(0xFF586577),
+        outlineVariant = Color(0xFF333D4A),
         error = Color(0xFFF87171),
         onError = Color(0xFF141414),
     )
@@ -109,10 +117,10 @@ fun WorkspaceButton(
         shape = MaterialTheme.shapes.large,
         colors =
             ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFF0F0F0),
-                contentColor = Color(0xFF202020),
-                disabledContainerColor = Color(0xFF383838),
-                disabledContentColor = Color(0xFF888888),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
             ),
         elevation =
             ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
@@ -133,8 +141,16 @@ fun WorkspaceOutlinedButton(
         modifier.heightIn(min = 48.dp),
         enabled = enabled,
         shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, if (enabled) Color(0xFF575754) else Color(0xFF484848)),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF242424)),
+        border =
+            BorderStroke(
+                1.dp,
+                if (enabled) MaterialTheme.colorScheme.outline
+                else MaterialTheme.colorScheme.outlineVariant,
+            ),
+        colors =
+            ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
         content = content,
     )
 }
@@ -147,8 +163,8 @@ fun WorkspaceIconButton(onClick: () -> Unit, content: @Composable () -> Unit) {
         shape = androidx.compose.foundation.shape.CircleShape,
         colors =
             IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ),
         content = content,
     )

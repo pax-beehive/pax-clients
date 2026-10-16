@@ -18,16 +18,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import net.paxtech.workspace.data.Approval
 import net.paxtech.workspace.session.ChatItem
@@ -164,7 +165,9 @@ internal fun ConversationTimeline(
     list: LazyListState = rememberLazyListState(),
     motion: SendMotionState? = null,
     waitingForReply: Boolean = false,
+    identity: ConversationIdentity = ConversationIdentity(),
 ) {
+    val entries = remember(messages) { conversationEntries(messages) }
     val atTail by remember(list) { derivedStateOf { !list.canScrollBackward } }
     // Capture the old layout before the new tail is measured. Stable-key anchoring otherwise
     // keeps the previous message visible even when a reader was following the conversation.
@@ -174,9 +177,11 @@ internal fun ConversationTimeline(
         approvals.lastOrNull()?.approval_id,
         waitingForReply,
     ) {
-        if (followNewTail) list.scrollToItem(0)
+        // Scaffold may compose this effect during measurement. Schedule the scroll
+        // for the next measure instead of forcing a reentrant measure/layout pass.
+        if (followNewTail) list.requestScrollToItem(0)
     }
-    LaunchedEffect(motion?.flight?.id) { if (motion?.flight != null) list.scrollToItem(0) }
+    LaunchedEffect(motion?.flight?.id) { if (motion?.flight != null) list.requestScrollToItem(0) }
     LazyColumn(
         modifier.testTag("conversation-timeline"),
         state = list,
@@ -203,7 +208,11 @@ internal fun ConversationTimeline(
         ) {
             approval(it)
         }
-        items(messages.asReversed(), key = { it.id }, contentType = { it.role }) {
+        items(
+            entries.asReversed(),
+            key = { it.id },
+            contentType = { if (it.isActivity) "activity" else it.messages.first().role },
+        ) {
             Box(
                 Modifier.animateItem(
                     fadeInSpec = tween(160),
@@ -211,7 +220,8 @@ internal fun ConversationTimeline(
                     fadeOutSpec = tween(120),
                 )
             ) {
-                MessageCard(it, motion)
+                if (it.isActivity) ConversationActivity(it)
+                else MessageCard(it.messages.single(), motion, identity)
             }
         }
         if (messages.isEmpty())
@@ -231,47 +241,56 @@ internal fun ConversationTimeline(
 }
 
 @Composable
-internal fun MessageCard(message: ChatItem, motion: SendMotionState? = null) {
+internal fun MessageCard(
+    message: ChatItem,
+    motion: SendMotionState? = null,
+    identity: ConversationIdentity = ConversationIdentity(),
+) {
     SideEffect { motion?.observe(message) }
-    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
-    val collapsible = message.role in setOf("tool", "thought")
-    val shown = if (collapsible && !expanded) message.text.take(600) else message.text
+    val isAgent = message.role in setOf("assistant", "agent")
+    val isUser = message.role == "user"
     Column(
         Modifier.fillMaxWidth(),
-        horizontalAlignment = if (message.role == "user") Alignment.End else Alignment.Start,
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
-        if (message.role in setOf("assistant", "agent"))
-            Row(
-                Modifier.padding(bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    WorkspaceSymbols.Agent,
-                    null,
-                    Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Agent",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        if (isUser)
+            Text(
+                "You",
+                Modifier.padding(end = 4.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        if (isAgent) ConversationByline(identity)
         Surface(
             modifier =
-                (if (message.role == "user")
-                        Modifier.fillMaxWidth(.9f).wrapContentWidth(Alignment.End)
+                (if (isUser) Modifier.fillMaxWidth(.85f).wrapContentWidth(Alignment.End)
                     else Modifier.fillMaxWidth())
-                    .onGloballyPositioned { motion?.destination(message, it.boundsInRoot()) }
+                    .onGloballyPositioned {
+                        motion?.destination(
+                            message,
+                            it.findRootCoordinates().localBoundingBoxOf(it, clipBounds = false),
+                        )
+                    }
                     .graphicsLayer { alpha = if (motion?.matches(message) == true) 0f else 1f },
             color =
-                if (message.role == "user") MaterialTheme.colorScheme.surfaceContainerHigh
-                else MaterialTheme.colorScheme.background,
-            shape = RoundedCornerShape(26.dp),
+                when {
+                    isUser -> UserMessageFill
+                    isAgent -> MaterialTheme.colorScheme.surfaceContainerLow
+                    else -> MaterialTheme.colorScheme.background
+                },
+            contentColor = if (isUser) UserMessageInk else MaterialTheme.colorScheme.onSurface,
+            border =
+                if (isAgent) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+            shape =
+                when {
+                    isUser -> RoundedCornerShape(26.dp)
+                    isAgent -> RoundedCornerShape(20.dp)
+                    else -> RectangleShape
+                },
         ) {
             Column(
-                Modifier.padding(if (message.role == "user") 16.dp else 0.dp),
+                // Every rounded bubble needs an inset so its corners never clip glyphs.
+                Modifier.padding(if (isUser || isAgent) 16.dp else 0.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (message.role in setOf("tool", "thought", "approval")) {
@@ -289,46 +308,12 @@ internal fun MessageCard(message: ChatItem, motion: SendMotionState? = null) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                SelectionContainer { MarkdownText(shown) }
-                if (collapsible)
-                    WorkspaceOutlinedButton(onClick = { expanded = !expanded }) {
-                        Text(if (expanded) "Collapse" else "Expand")
+                if (isAgent) MessageMarkdown(message.text)
+                else
+                    SelectionContainer {
+                        Text(message.text, style = MaterialTheme.typography.bodyMedium)
                     }
             }
-        }
-    }
-}
-
-private data class TextBlock(val text: String, val code: Boolean)
-
-@Composable
-private fun MarkdownText(text: String) {
-    // Small, synchronous segmentation: one text update produces one layout, with no stale
-    // asynchronous result briefly showing the previous chunk or a raw code fence.
-    val blocks =
-        remember(text) {
-            text.split("```").mapIndexed { index, value ->
-                TextBlock(
-                    if (index % 2 == 1) value.substringAfter('\n', value) else value,
-                    index % 2 == 1,
-                )
-            }
-        }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        blocks.forEach { block ->
-            if (block.code)
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text(
-                        block.text,
-                        Modifier.padding(10.dp),
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            else Text(block.text, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

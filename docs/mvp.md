@@ -24,8 +24,9 @@ the existing workbench, with localization-ready resources. macOS follows later.
    keys sees a locked state. Verify interoperability with the existing web client
    and paxd before claiming messaging support.
 
-New session creation follows once the existing-session loop is reliable; it
-requires selecting the correct project target, device, agent, and working path.
+New session creation is implemented in the Android local build, with project
+targets, device and agent selection, and an explicit working directory. See
+[mobile session creation](android-new-session.md) for validation and deployment status.
 
 ## Delivery sequence and completion gates
 

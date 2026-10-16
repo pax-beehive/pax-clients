@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -37,13 +39,13 @@ class SendMotionTest {
         compose.mainClock.autoAdvance = false
     }
 
-    private fun scene(motion: SendMotionState, accept: Boolean = true) {
+    private fun scene(motion: SendMotionState, accept: Boolean = true, height: Dp = 640.dp) {
         compose.setContent {
             WorkspaceTheme {
                 SendMotionHost(
                     motion,
                     Modifier.width(width.value)
-                        .height(640.dp)
+                        .height(height)
                         .background(MaterialTheme.colorScheme.background)
                         .testTag("motion-scene"),
                 ) { state ->
@@ -85,7 +87,8 @@ class SendMotionTest {
     @Test
     fun bubbleTravelsFromComposerAndCanonicalAckDoesNotDuplicateIt() {
         val motion = SendMotionState()
-        scene(motion)
+        // Leave room for the foldable IME. A clipped landing intentionally disables the flight.
+        scene(motion, height = 800.dp)
         compose
             .onNodeWithTag("message-composer")
             .performTextInput("Make the small details feel effortless.")
@@ -185,7 +188,9 @@ class SendMotionTest {
     @Test
     fun chineseDraftAndFastReplyRemainVisibleAfterLanding() {
         val motion = SendMotionState()
-        scene(motion)
+        // Leave room for the full multiline bubble, author label and IME. A clipped
+        // destination intentionally falls back to the normal row instead of animating.
+        scene(motion, height = 800.dp)
         val prompt = "把输入框里的文字，轻轻送进对话里。\n等待回复时，让圆点呼吸。"
         compose.onNodeWithTag("message-composer").performTextInput(prompt)
         compose.mainClock.advanceTimeBy(250)
@@ -225,6 +230,25 @@ class SendMotionTest {
             assertEquals(1, requests)
         }
         compose.onAllNodesWithText(prompt).assertCountEquals(1)
+    }
+
+    @Test
+    fun emptyOrClippedDestinationWaitsForAVisibleLandingTarget() {
+        val motion = SendMotionState()
+        motion.placeHost(Rect(0f, 0f, 600f, 900f))
+        motion.composer = Rect(0f, 800f, 600f, 900f)
+        motion.launch("user:test", "A short message")
+        val message = ChatItem("user:test", "turn", "user", "A short message")
+        motion.destination(message, Rect.Zero)
+        assertNotNull(motion.flight)
+        assertNull(motion.flight!!.destination)
+        motion.destination(message, Rect(0f, -60f, 600f, 120f))
+        assertNull(motion.flight!!.destination)
+        val landing = Rect(0f, 200f, 600f, 400f)
+        motion.destination(message, landing)
+        assertEquals(landing, motion.flight!!.destination)
+        motion.placeHost(Rect(0f, 0f, 300f, 900f))
+        assertNull(motion.flight)
     }
 
     private fun capture(name: String) {
