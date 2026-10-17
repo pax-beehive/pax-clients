@@ -10,6 +10,7 @@ data class ChatItem(
     val text: String,
     val title: String = "",
     val status: String = "",
+    val attachments: List<ChatAttachment> = emptyList(),
 )
 
 /** Mutable only inside SessionRuntime's mutex; UI receives immutable snapshots. */
@@ -75,6 +76,7 @@ class Timeline {
         if (id.isBlank()) return
         (historyIds.remove(id) ?: listOf(id)).forEach(::remove)
         val tool = value.obj("tool")
+        val attachments = historyAttachments(value)
         val parts =
             value
                 .array("parts")
@@ -101,7 +103,7 @@ class Timeline {
             )
                 "thought"
             else value.text("role", value.text("message_type", "agent"))
-        if (text.isBlank() && tool.isEmpty()) return
+        if (text.isBlank() && tool.isEmpty() && attachments.isEmpty()) return
         // Stored assistant messages may contain both thought and answer parts. Preserve
         // their order and keep answer text visible instead of folding the entire message.
         val segments = mutableListOf<Pair<String, String>>()
@@ -132,6 +134,7 @@ class Timeline {
                         partText,
                         tool.text("title"),
                         tool.text("status"),
+                        if (index == 0) attachments else emptyList(),
                     )
                 partId
             }
@@ -149,7 +152,8 @@ class Timeline {
                         .filter { it.text("type") == "text" }
                         .joinToString("") { it.text("text") }
                 val id = "user:${frame.text("id",turn)}"
-                items[id] = ChatItem(id, turn, "user", text)
+                items[id] =
+                    ChatItem(id, turn, "user", text, attachments = acpAttachments(params["prompt"]))
                 lastChunk = ""
             }
             "session/update" ->
@@ -163,6 +167,14 @@ class Timeline {
                                 "agent_thought_chunk" -> "thought"
                                 else -> "agent"
                             }
+                        val media = acpAttachments(update["content"])
+                        if (media.isNotEmpty()) {
+                            segment++
+                            lastChunk = ""
+                            val mediaId = "$turn:$role:media:$segment"
+                            items[mediaId] = ChatItem(mediaId, turn, role, "", attachments = media)
+                            return
+                        }
                         val key = "$turn:$role"
                         if (lastChunk != key) {
                             segment++
@@ -196,6 +208,8 @@ class Timeline {
                                 content.ifBlank { old?.text.orEmpty() },
                                 update.text("title", old?.title ?: "Tool call"),
                                 update.text("status", old?.status.orEmpty()),
+                                (old?.attachments.orEmpty() + acpAttachments(update["content"]))
+                                    .distinct(),
                             )
                     }
                 }

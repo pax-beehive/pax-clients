@@ -39,6 +39,17 @@ constructor(
     private val mutable = MutableStateFlow(WorkspaceState())
     val state = mutable.asStateFlow()
     val session = runtime.state
+
+    internal suspend fun attachment(
+        target: AgentSession,
+        media: net.paxtech.workspace.session.ChatAttachment,
+    ) = repo.attachmentContent(target, media)
+
+    fun presence(target: AgentSession): Flow<ConversationPresence> = observeConversationPresence {
+        repo.conversationPresence(target.node_id, target.agent_id)
+    }
+
+    val nodeTools = NodeToolsController(repo, vault, viewModelScope)
     val newProject =
         NewProjectController(
             repo,
@@ -125,9 +136,17 @@ constructor(
                                         wireJson.decodeFromJsonElement<List<Approval>>(
                                             repo.get("approvals").jsonObject.array("approvals")
                                         )
+                                    val nodes =
+                                        wireJson.decodeFromJsonElement<List<Node>>(
+                                            repo.get("nodes").jsonObject.array("nodes")
+                                        )
                                     mutable.update {
                                         it.copy(
-                                            workspace = it.workspace.copy(approvals = approvals)
+                                            workspace =
+                                                it.workspace.copy(
+                                                    approvals = approvals,
+                                                    nodes = nodes,
+                                                )
                                         )
                                     }
                                 } catch (e: CancellationException) {
@@ -329,6 +348,7 @@ constructor(
     fun signOut() {
         if (newSession.state.value?.creating == true || newProject.state.value?.creating == true)
             return
+        nodeTools.dismiss()
         newProject.dismiss()
         newSession.dismiss()
         launchAction {

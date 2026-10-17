@@ -1,6 +1,35 @@
 import XCTest
 
 final class PaxWorkspaceUITests: XCTestCase {
+  @MainActor func testHomeDirectoryPickerAndDaemonUpgrade() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["--pax-ui-fixture"]
+    app.launch()
+    XCTAssertTrue(app.buttons["create-menu"].waitForExistence(timeout: 15))
+    app.buttons["create-menu"].tap()
+    app.buttons["New session"].tap()
+    app.buttons["session-project"].tap()
+    app.buttons["PaxWorkspace"].tap()
+    app.buttons["Browse device folders"].tap()
+    XCTAssertTrue(app.navigationBars["Choose folder"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["Up"].isEnabled)
+    app.buttons["folder:/Users/preview/Projects"].tap()
+    XCTAssertTrue(app.staticTexts["No subfolders"].waitForExistence(timeout: 5))
+    attach(app, "Home folder picker")
+    app.buttons["Select this folder"].tap()
+    XCTAssertEqual(
+      app.textFields["Absolute working directory"].value as? String, "/Users/preview/Projects")
+    app.buttons["Cancel"].tap()
+    app.buttons["Settings and devices"].tap()
+    app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Studio Mac")).firstMatch.tap()
+    XCTAssertTrue(app.buttons["Upgrade paxd"].waitForExistence(timeout: 5))
+    app.buttons["Upgrade paxd"].tap()
+    app.alerts.buttons["Upgrade when idle"].tap()
+    XCTAssertTrue(app.staticTexts["Upgrade complete"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["Up to date"].exists)
+    attach(app, "Confirmed daemon upgrade")
+  }
+
   @MainActor func testWelcome() throws {
     let app = XCUIApplication()
     app.launch()

@@ -18,8 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Dark workspace surfaces with restrained color for actions, identity and status. */
-internal val UserMessageFill = Color(0xFF29435E)
+/** Neutral charcoal surfaces; color is reserved for actions, selection and status. */
+internal val UserMessageFill = Color(0xFF293747)
 internal val UserMessageInk = Color(0xFFEDF4FC)
 internal val WorkspaceSuccess = Color(0xFF8BD5B2)
 internal val WorkspaceAttention = Color(0xFFF0C285)
@@ -29,30 +29,30 @@ private val workspaceColors =
     darkColorScheme(
         primary = Color(0xFF9ABFFF),
         onPrimary = Color(0xFF102544),
-        primaryContainer = Color(0xFF263F63),
+        primaryContainer = Color(0xFF283442),
         onPrimaryContainer = Color(0xFFDCE9FF),
-        secondary = Color(0xFF87D8C8),
-        onSecondary = Color(0xFF102F29),
-        secondaryContainer = Color(0xFF203D37),
-        onSecondaryContainer = Color(0xFFCCF4E9),
+        secondary = Color(0xFFBFC2C8),
+        onSecondary = Color(0xFF252629),
+        secondaryContainer = Color(0xFF303134),
+        onSecondaryContainer = Color(0xFFE3E3E5),
         tertiary = Color(0xFFEAB890),
         onTertiary = Color(0xFF3B2716),
         tertiaryContainer = Color(0xFF463426),
         onTertiaryContainer = Color(0xFFFFDFC5),
-        background = Color(0xFF141414),
+        background = Color(0xFF181818),
         onBackground = Color(0xFFF1F1EF),
-        surface = Color(0xFF141414),
+        surface = Color(0xFF181818),
         onSurface = Color(0xFFF1F1EF),
-        surfaceVariant = Color(0xFF252B35),
-        onSurfaceVariant = Color(0xFFAEB8C6),
+        surfaceVariant = Color(0xFF282828),
+        onSurfaceVariant = Color(0xFFB3B3B6),
         surfaceContainerLowest = Color(0xFF141414),
-        surfaceContainerLow = Color(0xFF1B1F27),
-        surfaceContainer = Color(0xFF1B1F27),
-        surfaceContainerHigh = Color(0xFF252B35),
-        surfaceContainerHighest = Color(0xFF303A48),
+        surfaceContainerLow = Color(0xFF202020),
+        surfaceContainer = Color(0xFF222222),
+        surfaceContainerHigh = Color(0xFF282828),
+        surfaceContainerHighest = Color(0xFF333333),
         surfaceTint = Color.Transparent,
-        outline = Color(0xFF586577),
-        outlineVariant = Color(0xFF333D4A),
+        outline = Color(0xFF656568),
+        outlineVariant = Color(0xFF383838),
         error = Color(0xFFF87171),
         onError = Color(0xFF141414),
     )
@@ -74,11 +74,11 @@ fun WorkspaceTheme(content: @Composable () -> Unit) {
                 headlineLarge = type(28, 34, FontWeight.SemiBold),
                 headlineMedium = type(24, 30, FontWeight.SemiBold),
                 headlineSmall = type(22, 28, FontWeight.SemiBold),
-                titleLarge = type(20, 26, FontWeight.Medium),
+                titleLarge = type(18, 24, FontWeight.Medium),
                 titleMedium = type(16, 22, FontWeight.Medium),
-                titleSmall = type(14, 20, FontWeight.Medium),
+                titleSmall = type(15, 21, FontWeight.Medium),
                 bodyLarge = type(16, 24),
-                bodyMedium = type(15, 23),
+                bodyMedium = type(16, 24),
                 bodySmall = type(13, 19),
                 labelLarge = type(14, 20, FontWeight.Medium),
                 labelMedium = type(12, 18, FontWeight.Medium),

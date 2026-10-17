@@ -88,7 +88,8 @@ class MessageMarkdownTest {
                 }
             }
         }
-        awaitText("Load image · Preview")
+        awaitText("Load image")
+        compose.onNodeWithText("Preview").assertExists()
         compose
             .onNodeWithText("Math:", substring = true)
             .assertTextContains("x^2 + y^2", substring = true)

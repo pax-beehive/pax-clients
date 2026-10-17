@@ -45,6 +45,52 @@ class ProtocolTest {
         }
     }
 
+    @Test
+    fun showsJsonConflictReasonForBothRestAndStreamingButNeverGatewayHtml() = runBlocking {
+        MockWebServer().use { server ->
+            val api = PaxApi()
+            for (stream in listOf(false, true)) {
+                server.enqueue(
+                    MockResponse()
+                        .setResponseCode(409)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody(
+                            """{"code":409,"message":"session has no native ACP session id"}"""
+                        )
+                )
+                val request =
+                    api.request(server.url("/").toString(), listOf("conversation"), method = "POST")
+                try {
+                    if (stream) api.events(request).collect() else api.json(request)
+                    fail("409 must remain a failure")
+                } catch (e: ApiFailure) {
+                    assertEquals(409, e.status)
+                    assertTrue(e.message!!.contains("not initialized"))
+                    assertTrue(e.message!!.contains("409"))
+                }
+            }
+            for ((type, body) in
+                listOf(
+                    "text/html" to "<html>gateway diagnostics</html>",
+                    "application/json" to "{bad-json",
+                    "application/json" to """{"message":"${"x".repeat(9000)}"}""",
+                )) {
+                server.enqueue(
+                    MockResponse()
+                        .setResponseCode(502)
+                        .setHeader("Content-Type", type)
+                        .setBody(body)
+                )
+                try {
+                    api.json(api.request(server.url("/").toString(), listOf("test")))
+                    fail("502 must remain a failure")
+                } catch (e: ApiFailure) {
+                    assertEquals("Server request failed (502).", e.message)
+                }
+            }
+        }
+    }
+
     private fun vector() =
         wireJson
             .parseToJsonElement(javaClass.getResource("/web-vectors.json")!!.readText())

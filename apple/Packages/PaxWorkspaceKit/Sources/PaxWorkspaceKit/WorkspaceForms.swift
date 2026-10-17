@@ -69,6 +69,7 @@
     @State private var agents: [Resource] = []
     @State private var targets: [Resource] = []
     @State private var targetID = ""
+    @State private var browsing = false
     @State private var busy = false
     @State private var loading = false
     @State private var loadingTargets = false
@@ -108,6 +109,7 @@
             }
           }.disabled(busy || uncertain || loading || loadingTargets)
           Section("Session") {
+            Button("Browse device folders") { browsing = true }.disabled(draft.nodeID.isEmpty)
             TextField("Absolute working directory", text: $draft.cwd).textInputAutocapitalization(
               .never
             ).autocorrectionDisabled()
@@ -137,6 +139,12 @@
                   !draft.valid || busy || loading || loadingTargets || uncertain)
             }
           }.interactiveDismissDisabled(busy)
+          .sheet(isPresented: $browsing) {
+            let node = draft.nodeID
+            DirectoryBrowserView(node: node, repo: model.repo) { path in
+              if draft.nodeID == node { draft.cwd = path }
+            }
+          }
           .task { await loadAgents() }
           .task(id: draft.projectID) { await loadTargets() }
           .onChange(of: draft.nodeID) { old, new in
@@ -390,20 +398,27 @@
           }
           Section("Devices") {
             ForEach(model.workspace.nodes) { node in
-              HStack {
-                Image(
-                  systemName: node.raw["os"].string == "darwin"
-                    ? "laptopcomputer" : "desktopcomputer"
-                ).foregroundStyle(.secondary)
-                VStack(alignment: .leading) {
-                  Text(node.title)
-                  if !node.raw["hostname"].string.isEmpty {
-                    Text(node.raw["hostname"].string).font(.caption).foregroundStyle(.secondary)
+              NavigationLink {
+                NodeToolsView(node: node, repo: model.repo)
+              } label: {
+                HStack {
+                  Image(
+                    systemName: node.raw["os"].string == "darwin"
+                      ? "laptopcomputer" : "desktopcomputer"
+                  ).foregroundStyle(.secondary)
+                  VStack(alignment: .leading) {
+                    Text(node.title)
+                    Text("paxd " + node.raw.text("paxd_version", "version unknown")).font(.caption)
+                      .foregroundStyle(.secondary)
+                    if !node.raw["hostname"].string.isEmpty {
+                      Text(node.raw["hostname"].string).font(.caption).foregroundStyle(.secondary)
+                    }
                   }
+                  Spacer()
+                  Text(node.raw["online"].bool ? "Online" : "Offline").font(.caption)
+                    .foregroundStyle(
+                      node.raw["online"].bool ? .green : .secondary)
                 }
-                Spacer()
-                Text(node.raw["online"].bool ? "Online" : "Offline").font(.caption).foregroundStyle(
-                  node.raw["online"].bool ? .green : .secondary)
               }
             }
             if model.workspace.nodes.isEmpty {

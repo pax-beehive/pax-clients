@@ -119,3 +119,8 @@ swift test --package-path apple/Packages/PaxWorkspaceKit
 - [Protocol source map](contracts/README.md)
 - [Initial preparation verification](docs/verification.md)
 - [Android delivery and validation](docs/android-status.md)
+
+Device tools now include [home-directory browsing and paxd upgrades](docs/mobile-node-tools.md)
+on Android and iOS. Browse folders on demand when creating a session; inspect the
+reported daemon version and request an idle-safe upgrade from Settings > Devices.
+The new directory endpoint requires the corresponding manager/paxd rollout.

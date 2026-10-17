@@ -60,35 +60,46 @@ class SessionCreationTest {
             }
     }
 
-    @Test
-    fun sendsVerifiedFieldsAndPreservesReturnedTransport() = runBlocking {
-        MockWebServer().use { server ->
-            server.enqueue(
-                response(
-                    """{"session_id":"sess_1","node_id":"node_1","agent_id":"agent_1","transport":"e2ee","native_id":"native_7","workspace_roots":["/workspace"]}"""
-                )
+    private fun initialized(id: String = "sess_server", done: Boolean = true): MockResponse =
+        MockResponse()
+            .setHeader("Content-Type", "text/event-stream")
+            .setBody(
+                "data: {\"type\":\"session\",\"session_id\":\"$id\",\"node_id\":\"node_1\",\"agent_id\":\"agent_1\"}\n\n" +
+                    if (done)
+                        "data: {\"type\":\"done\",\"session_id\":\"$id\",\"node_id\":\"node_1\",\"agent_id\":\"agent_1\"}\n\n"
+                    else ""
             )
+
+    private val readySession =
+        """{"session_id":"sess_server","node_id":"node_1","agent_id":"agent_1","native_id":"native_7","primary_project_id":"project_1","pax_config":{"cwd":"/workspace"}}"""
+
+    @Test
+    fun initializesAgentBeforeConfiguringReturnedIdentity() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(initialized())
+            server.enqueue(response(readySession))
+            var assigned = ""
             val created =
-                repo(server)
-                    .createSession(
-                        SessionDraft(
-                            "sess_1",
-                            "project_1",
-                            "node_1",
-                            "agent_1",
-                            " /workspace ",
-                            " Test ",
-                        )
-                    )
-            assertTrue(created.encrypted)
+                repo(server).createSession(
+                    SessionDraft("", "project_1", "node_1", "agent_1", " /workspace ", " Test ")
+                ) {
+                    assigned = it
+                }
+            assertEquals("sess_server", assigned)
             assertEquals("native_7", created.native_id)
-            val request = server.takeRequest()
-            assertEquals("/api/v1/user/self/nodes/node_1/agents/agent_1/sessions", request.path)
-            val body = wireJson.parseToJsonElement(request.body.readUtf8()).jsonObject
-            assertEquals("sess_1", body.text("session_id"))
-            assertEquals("project_1", body.text("primary_project_id"))
-            assertEquals("/workspace", body.obj("pax_config").text("cwd"))
-            assertEquals("/workspace", body.array("workspace_roots")[0].jsonPrimitive.content)
+            val initialization = server.takeRequest()
+            assertTrue(initialization.path!!.endsWith("/conversation"))
+            val initBody = wireJson.parseToJsonElement(initialization.body.readUtf8()).jsonObject
+            assertTrue(initBody.flag("initialize_only"))
+            assertEquals("/workspace", initBody.text("cwd"))
+            assertEquals("project_1", initBody.text("primary_project_id"))
+            assertFalse(initBody.containsKey("session_id"))
+            assertFalse(initBody.containsKey("input"))
+            val configure = server.takeRequest()
+            assertTrue(configure.path!!.endsWith("/sessions"))
+            val body = wireJson.parseToJsonElement(configure.body.readUtf8()).jsonObject
+            assertEquals("sess_server", body.text("session_id"))
+            assertEquals("Test", body.text("name"))
             assertFalse(body.containsKey("native_id"))
             assertFalse(body.containsKey("transport"))
             assertFalse(body.obj("pax_config").containsKey("approval_mode"))
@@ -98,14 +109,16 @@ class SessionCreationTest {
     @Test
     fun defaultsToEnabledProjectTargetAndPreventsDuplicateCreation() = runBlocking {
         MockWebServer().use { server ->
-            var posts = 0
+            var initializations = 0
+            var configurations = 0
             options(server) { request ->
-                posts++
-                val body = wireJson.parseToJsonElement(request.body.readUtf8()).jsonObject
-                response(
-                        """{"session_id":"${body.text("session_id")}","node_id":"node_1","agent_id":"agent_1"}"""
-                    )
-                    .setBodyDelay(150, java.util.concurrent.TimeUnit.MILLISECONDS)
+                if (request.path!!.endsWith("/conversation")) {
+                    initializations++
+                    initialized().setBodyDelay(150, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } else {
+                    configurations++
+                    response(readySession)
+                }
             }
             val done = CompletableDeferred<AgentSession>()
             val controller = NewSessionController(repo(server), this) { done.complete(it) }
@@ -119,29 +132,24 @@ class SessionCreationTest {
             controller.dismiss()
             assertTrue(controller.state.value!!.creating)
             withTimeout(5000) { done.await() }
-            assertEquals(1, posts)
+            assertEquals(1, initializations)
+            assertEquals(1, configurations)
             assertNull(controller.state.value)
         }
     }
 
     @Test
-    fun unknownOutcomeChecksExistingIdentityWithoutRepeatingPost() = runBlocking {
+    fun lostCompletionChecksAssignedIdentityWithoutRepeatingInitialization() = runBlocking {
         MockWebServer().use { server ->
             var posts = 0
-            var id = ""
             options(server) { request ->
                 if (request.method == "POST") {
                     posts++
-                    id =
-                        wireJson
-                            .parseToJsonElement(request.body.readUtf8())
-                            .jsonObject
-                            .text("session_id")
-                    response("{}", 503)
-                } else
-                    response(
-                        """{"session_id":"$id","node_id":"node_1","agent_id":"agent_1","primary_project_id":"project_1","pax_config":{"cwd":"/workspace"}}"""
-                    )
+                    initialized(done = false)
+                } else {
+                    assertTrue(request.path!!.endsWith("/sess_server"))
+                    response(readySession)
+                }
             }
             val done = CompletableDeferred<AgentSession>()
             val controller = NewSessionController(repo(server), this) { done.complete(it) }
@@ -152,8 +160,77 @@ class SessionCreationTest {
             controller.cwd("/different")
             assertEquals("/workspace", controller.state.value!!.draft.cwd)
             controller.create()
-            assertEquals(id, withTimeout(5000) { done.await() }.session_id)
+            assertEquals("sess_server", withTimeout(5000) { done.await() }.session_id)
             assertEquals(1, posts)
+        }
+    }
+
+    @Test
+    fun missingAssignedIdentityNeverRepeatsUnknownMutation() = runBlocking {
+        MockWebServer().use { server ->
+            var posts = 0
+            options(server) {
+                posts++
+                response("{}", 503)
+            }
+            val controller =
+                NewSessionController(repo(server), this) { error("Unexpected success") }
+            controller.open("project_1")
+            withTimeout(5000) { controller.state.first { it?.canCreate == true } }
+            controller.create()
+            withTimeout(5000) { controller.state.first { it?.uncertain == true } }
+            controller.create()
+            withTimeout(5000) { controller.state.first { it?.creating == false } }
+            assertTrue(controller.state.value!!.error!!.contains("Refresh Sessions"))
+            assertEquals(1, posts)
+        }
+    }
+
+    @Test
+    fun recoveryRejectsRecordWithoutNativeSessionButPreservesEncryptedTransport() = runBlocking {
+        MockWebServer().use { server ->
+            val draft = SessionDraft("sess_server", "project_1", "node_1", "agent_1", "/workspace")
+            server.enqueue(response(readySession.replace("native_7", "")))
+            try {
+                repo(server).findCreatedSession(draft)
+                fail("Record-only sessions must not open as ready")
+            } catch (e: IllegalStateException) {
+                assertTrue(e.message!!.contains("initializing"))
+            }
+            server.enqueue(
+                response(
+                    readySession
+                        .replace("native_7", "")
+                        .replaceFirst("{", "{\"transport\":\"e2ee\",")
+                )
+            )
+            assertTrue(repo(server).findCreatedSession(draft).encrypted)
+        }
+    }
+
+    @Test
+    fun configurationFailureAfterInitializationCannotCreateAnotherSession() = runBlocking {
+        MockWebServer().use { server ->
+            var initializations = 0
+            options(server) { request ->
+                when {
+                    request.path!!.endsWith("/conversation") -> {
+                        initializations++
+                        initialized()
+                    }
+                    request.method == "POST" -> response("{}", 409)
+                    else -> response(readySession)
+                }
+            }
+            val done = CompletableDeferred<AgentSession>()
+            val controller = NewSessionController(repo(server), this) { done.complete(it) }
+            controller.open("project_1")
+            withTimeout(5000) { controller.state.first { it?.canCreate == true } }
+            controller.create()
+            withTimeout(5000) { controller.state.first { it?.uncertain == true } }
+            controller.create()
+            withTimeout(5000) { done.await() }
+            assertEquals(1, initializations)
         }
     }
 

@@ -27,6 +27,7 @@
       .fields(["project_id": "project_fixture", "display_name": "PaxWorkspace"])
     ]
     private var approval = true
+    private var upgraded = false
     private var messages: [JSON] = [
       .object([
         "message_id": .string("m1"), "turn_id": .string("turn_old"), "session_seq": .number(1),
@@ -75,15 +76,34 @@
         }
         return .object(["projects": .array(projects)])
       }
-      if path.hasSuffix("nodes") {
-        return .object([
-          "nodes": .array([
-            .object([
-              "node_id": .string("node_fixture"), "name": .string("Studio Mac"),
-              "hostname": .string("studio.local"), "os": .string("darwin"), "online": .bool(true),
-            ])
-          ])
+      let node = JSON.object([
+        "node_id": .string("node_fixture"), "name": .string("Studio Mac"),
+        "hostname": .string("studio.local"), "os": .string("darwin"), "arch": .string("arm64"),
+        "online": .bool(true), "paxd_version": .string(upgraded ? "1.2.4" : "1.2.3"),
+      ])
+      if path.hasSuffix("nodes") { return .object(["nodes": .array([node])]) }
+      if path.hasSuffix("nodes/node_fixture") { return node }
+      if path.hasSuffix("public/paxd/download") { return .fields(["version": "1.2.4"]) }
+      if path.hasSuffix("daemon/upgrade") {
+        upgraded = true
+        return .fields(["command_id": body["command_id"].string, "dispatch_status": "acknowledged"])
+      }
+      if path.contains("daemon/commands/") {
+        return .object(["maintenance_confirmation": .fields(["status": "confirmed"])])
+      }
+      if path.hasSuffix("daemon/directories") {
+        let query =
+          URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let requested = query.first { $0.name == "path" }?.value ?? ""
+        let current = requested.isEmpty ? "/Users/preview" : requested
+        let page: JSON = .object([
+          "home": .string("/Users/preview"), "path": .string(current),
+          "parent": current == "/Users/preview" ? .null : .string("/Users/preview"),
+          "entries": .array(
+            current == "/Users/preview"
+              ? [.fields(["name": "Projects", "path": "/Users/preview/Projects"])] : []),
         ])
+        return .object(["directories": page])
       }
       if path.hasSuffix("agents") {
         return .object([

@@ -79,6 +79,7 @@ data class VaultData(
     val pairings: List<Pairing> = emptyList(),
     val oauth: OAuthPending? = null,
     val userSession: UserSession? = null,
+    val pendingUpgrades: Map<String, PendingUpgrade> = emptyMap(),
 )
 
 @Serializable
@@ -123,6 +124,8 @@ data class Node(
     val hostname: String = "",
     val online: Boolean = false,
     val os: String = "",
+    val arch: String = "",
+    val paxd_version: String = "",
 )
 
 @Serializable

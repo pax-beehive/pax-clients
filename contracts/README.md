@@ -43,6 +43,16 @@ decoder. Confirm the final native origin and path prefix during auth integration
 
 ## Fixture policy
 
+Android conversation presence reads `GET /api/v1/user/self/nodes/:node_id`
+(the node object directly inside `data`) and `GET
+/api/v1/user/self/nodes/:node_id/agents` (`data.agents`). Verified against
+`pax-manager-android-native/api/pax_manager.thrift`,
+`internal/manager/userapi/service.go` (`GetNode`, `ListNodeAgents`), and
+`internal/manager/domain/models.go`. Both expose `online` booleans. The existing
+native GET allowlist already permits these routes. Presence matches both node
+and agent IDs, leaves missing/failed reads unknown, and does not infer process
+reachability from session `runtime_status` or the mobile SSE connection.
+
 Before implementing transport, add small synthetic examples of actual response
 shapes with the exact source revision and extraction method. Test both clients
 against the same fixtures. Cover unknown enum values, omitted/null optional
@@ -96,8 +106,11 @@ Conversation identity uses the existing `AgentSession.agent_type` and matching
 `Node.name` / `Node.hostname` fields from `api/pax_manager.thrift` in the Manager
 checkout. See [conversation identity](../docs/android-conversation-identity.md).
 
-The local Android creation flow uses the existing node-scoped session POST,
-node Agent GET and project target GET. Request fields and provenance are recorded
+The Android creation flow first uses the existing conversation POST with
+`initialize_only`, `cwd` and optional project ID, then configures the returned
+manager ID through the node-scoped session POST. Record registration alone does
+not initialize ACP and leads to first-prompt HTTP 409. Node Agent GET and project
+target GET supply the form choices. Request fields and provenance are recorded
 in [mobile session creation](../docs/android-new-session.md). The native gateway
 allowlist additions passed validation and were deployed after explicit user approval;
 see the linked document for the active version and live checks.
@@ -111,3 +124,28 @@ prefix is retained for compatibility, with fresh per-attempt state/verifier.
 See [iOS source map and validation](../docs/ios-status.md). Swift tests consume a
 copy of the same synthetic WebCrypto fixture and independently emit a CryptoKit
 command for `scripts/verify-ios-web-interop.mjs` to decrypt with the web source.
+
+## Home directory browsing and daemon maintenance
+
+The new `daemon/directories` GET contract is defined in
+`pax-manager-android-native/api/pax_manager.thrift` and forwarded through userapi
+only after node authorization. `paxd/internal/control/directories.go` confines
+`directories.list` to the daemon user's home with `os.Root`, including symlinks.
+Empty path selects home; each page returns at most 100 directory names/paths,
+with `next_after` for on-demand continuation. No recursive tree or file contents
+are transferred.
+
+Both native clients display reported `paxd_version` and reuse the stable-release,
+`daemon/upgrade` and `daemon/commands/:command_id` contracts. They preserve the
+command ID across uncertain outcomes and require new-boot/version confirmation.
+The exact native allowlist changes were explicitly approved in this session;
+the gateway routes were deployed on 2026-10-16. See [mobile node tools](../docs/mobile-node-tools.md).
+
+## Android received images and files
+
+ACP media blocks are preserved from both live frames and durable `raw_json` /
+`parts[].payload_json`. Published files use the existing `publish_artifact` MCP
+marker and `artifact-publication://` history parts. Native GET content-ticket
+routes reuse Manager owner checks; signed downloads never carry the API bearer
+token. See [Android attachments](../docs/android-attachments.md) for exact source
+contracts, supported types, limits, and validation.

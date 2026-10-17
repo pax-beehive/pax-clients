@@ -15,6 +15,8 @@ import androidx.compose.ui.window.DialogProperties
 
 @Composable
 internal fun NewSessionDialog(state: NewSessionState, controller: NewSessionController) {
+    val browser by controller.directories.state.collectAsState()
+    browser?.let { DirectoryBrowserDialog(it, controller.directories) }
     Dialog(
         onDismissRequest = controller::dismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -121,6 +123,13 @@ internal fun NewSessionDialog(state: NewSessionState, controller: NewSessionCont
                                 "No agents are available on this device. Start an agent on the computer, then reload options.",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                        OutlinedButton(
+                            onClick = controller::browse,
+                            enabled = state.editable && state.draft.nodeId.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Browse device folders")
+                        }
                         OutlinedTextField(
                             state.draft.cwd,
                             controller::cwd,

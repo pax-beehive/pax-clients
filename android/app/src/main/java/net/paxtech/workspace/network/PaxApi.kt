@@ -22,15 +22,19 @@ data class ServerEvent(val id: String, val data: String)
 
 /** No redirects or automatic mutation retries: a lost response is an unknown outcome. */
 @Singleton
-class PaxApi @Inject constructor() {
-    private val client =
-        OkHttpClient.Builder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .retryOnConnectionFailure(false)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
+class PaxApi internal constructor(private val client: OkHttpClient) {
+    @Inject
+    constructor() :
+        this(
+            OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .retryOnConnectionFailure(false)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build()
+        )
+
     private val streaming =
         client
             .newBuilder()
@@ -173,8 +177,55 @@ class PaxApi @Inject constructor() {
             }
             .buffer(64)
 
+    /** Signed file URLs never inherit API credentials or follow redirects to another origin. */
+    internal suspend fun downloadAttachment(url: String, limit: Int): Pair<ByteArray, String> =
+        withContext(Dispatchers.IO) {
+            val target = url.toHttpUrl()
+            require(target.isHttps && target.username.isBlank() && target.password.isBlank()) {
+                "HTTPS is required for attachments"
+            }
+            val request = Request.Builder().url(target).build()
+            await(client.newCall(request)).use { response ->
+                if (!response.isSuccessful)
+                    throw ApiFailure(
+                        response.code,
+                        "File download failed (${response.code}). Reload the file to try again.",
+                    )
+                val body = response.body ?: throw IOException("The file response is empty.")
+                require(body.contentLength() <= limit) {
+                    "This file is larger than the 25 MB mobile download limit."
+                }
+                val source = body.source()
+                require(!source.request(limit.toLong() + 1)) {
+                    "This file is larger than the 25 MB mobile download limit."
+                }
+                source.readByteArray() to
+                    (body.contentType()?.let { "${it.type}/${it.subtype}" }
+                        ?: "application/octet-stream")
+            }
+        }
+
+    private fun responseErrorMessage(response: Response): String? {
+        if (response.header("Content-Type")?.contains("application/json") != true) return null
+        return runCatching {
+                // Error bodies may come from gateways. Never render HTML or an unbounded response.
+                val raw = response.peekBody(8193).string()
+                if (raw.length > 8192) return null
+                val body = wireJson.parseToJsonElement(raw).jsonObject
+                val detail = body.text("message").ifBlank { body.text("error") }.trim()
+                if (detail == "session has no native ACP session id")
+                    "This session was not initialized on the agent. Create a new session to continue."
+                else
+                    detail.takeIf {
+                        it.isNotBlank() && it.length <= 512 && it.none { c -> c.isISOControl() }
+                    }
+            }
+            .getOrNull()
+    }
+
     private fun validate(response: Response, type: String) {
         if (!response.isSuccessful) {
+            val detail = responseErrorMessage(response)
             val message =
                 when (response.code) {
                     301,
@@ -187,7 +238,9 @@ class PaxApi @Inject constructor() {
                     401 -> "Your access has expired or was revoked. Sign in again."
                     403 -> "Access was denied by the server or gateway."
                     429 -> "Too many requests. Please wait before retrying."
-                    else -> "Server request failed (${response.code})."
+                    else ->
+                        detail?.let { "$it (${response.code})" }
+                            ?: "Server request failed (${response.code})."
                 }
             throw ApiFailure(response.code, message)
         }

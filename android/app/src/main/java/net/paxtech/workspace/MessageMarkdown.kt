@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -22,7 +21,6 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.mikepenz.markdown.compose.MarkdownElement
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
 import com.mikepenz.markdown.compose.components.markdownComponents
@@ -406,21 +404,5 @@ private fun MarkdownCodePanel(block: MarkdownCodeContent) {
 private fun MarkdownImageCard(content: String, node: ASTNode, references: ReferenceLinkHandler) {
     val url = markdownImageUrl(content, node, references::find)
     val alt = markdownImageAlt(content, node).ifBlank { "Image" }
-    val safe = safeMarkdownLink(url)?.takeIf { it.startsWith("https://", true) }
-    var show by rememberSaveable(url) { mutableStateOf(false) }
-    var failed by remember(url) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth()) {
-        if (show && safe != null) {
-            AsyncImage(
-                model = safe,
-                contentDescription = alt,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                onError = { failed = true },
-            )
-            if (failed) Text("Image unavailable: $alt", style = MaterialTheme.typography.bodySmall)
-        } else
-            TextButton(onClick = { show = true }, enabled = safe != null) {
-                Text(if (safe == null) "$alt · $url" else "Load image · $alt")
-            }
-    }
+    AttachmentCard(net.paxtech.workspace.session.attachmentFromUri(url, alt, "image/png"))
 }

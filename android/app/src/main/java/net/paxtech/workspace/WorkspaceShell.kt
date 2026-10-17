@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -87,6 +88,8 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         LoginScreen(state, vm)
         return
     }
+    val nodeTools by vm.nodeTools.state.collectAsStateWithLifecycle()
+    nodeTools?.let { NodeToolsDialog(it, vm.nodeTools) }
     val newProject by vm.newProject.state.collectAsStateWithLifecycle()
     newProject?.let { NewProjectDialog(it, vm.newProject) }
     val newSession by vm.newSession.state.collectAsStateWithLifecycle()
@@ -103,11 +106,17 @@ fun WorkspaceShell(vm: WorkspaceViewModel) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = workspaceOpacity.value }) {
             AdaptiveWorkspace(
                 selected = state.selected != null,
-                home = { dualPane -> WorkspaceHome(state, vm, dualPane) },
-                detail = { dualPane ->
+                home = { dualPane, visible, hideSidebar ->
+                    WorkspaceHome(state, vm, dualPane, visible, hideSidebar)
+                },
+                detail = { dualPane, showSidebar ->
                     val target = state.selected
                     if (target != null)
-                        key(target.session_id) { SessionScreen(target, state, vm, dualPane) }
+                        key(target.node_id, target.agent_id, target.session_id) {
+                            SessionArrival {
+                                SessionScreen(target, state, vm, dualPane, showSidebar)
+                            }
+                        }
                     else
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             WorkspaceEmptyState(
@@ -259,7 +268,13 @@ private fun LoginScreen(state: WorkspaceState, vm: WorkspaceViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPane: Boolean) {
+private fun WorkspaceHome(
+    state: WorkspaceState,
+    vm: WorkspaceViewModel,
+    dualPane: Boolean,
+    visible: Boolean,
+    hideSidebar: (() -> Unit)?,
+) {
     var tab by rememberSaveable { mutableStateOf("Home") }
     var homeTab by rememberSaveable { mutableStateOf("Home") }
     var filter by rememberSaveable { mutableStateOf("") }
@@ -270,7 +285,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
         if (dualPane) MaterialTheme.colorScheme.surfaceContainerLow
         else MaterialTheme.colorScheme.background
     LaunchedEffect(tab) { focusManager.clearFocus() }
-    BackHandler(enabled = tab == "Devices") { tab = "Settings" }
+    BackHandler(enabled = visible && tab == "Devices") { tab = "Settings" }
     Scaffold(
         containerColor = paneColor,
         topBar = {
@@ -281,7 +296,6 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                         Text(
                             if (tab in listOf("Home", "Projects")) "Workspace" else tab,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -296,27 +310,26 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                             }
                     },
                     actions = {
-                        if (tab in listOf("Home", "Projects"))
+                        if (tab == "Projects")
                             IconButton(
-                                onClick = {
-                                    if (tab == "Projects") vm.newProject.open()
-                                    else vm.newSession.open(project)
-                                },
+                                onClick = { vm.newProject.open() },
                                 modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     Icons.Outlined.Add,
-                                    if (tab == "Projects") "New project" else "New session",
+                                    "New project",
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
                             }
                         if (tab != "Settings")
-                            IconButton(
-                                onClick = { vm.refresh() },
+                            HoldToRefreshButton(
                                 enabled = !state.loading,
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Icon(Icons.Outlined.Refresh, "Refresh workspace")
+                                failed = state.error != null,
+                                onRefresh = { vm.refresh() },
+                            )
+                        if (hideSidebar != null)
+                            IconButton(onClick = hideSidebar, modifier = Modifier.size(48.dp)) {
+                                Icon(WorkspaceSymbols.CollapseSidebar, "Hide sidebar")
                             }
                     },
                 )
@@ -392,7 +405,10 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                         OutlinedTextField(
                             filter,
                             { filter = it },
-                            placeholder = { Text("Search sessions") },
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp),
+                            placeholder = {
+                                Text("Search sessions", style = MaterialTheme.typography.labelLarge)
+                            },
                             leadingIcon = {
                                 Icon(Icons.Outlined.Search, null, Modifier.size(20.dp))
                             },
@@ -402,14 +418,16 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                                         Icon(Icons.Outlined.Close, "Clear search")
                                     }
                             },
-                            shape = MaterialTheme.shapes.large,
+                            shape = MaterialTheme.shapes.medium,
                             colors =
                                 OutlinedTextFieldDefaults.colors(
                                     unfocusedContainerColor =
-                                        if (dualPane) MaterialTheme.colorScheme.surfaceContainerHigh
+                                        if (dualPane)
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = .035f)
                                         else MaterialTheme.colorScheme.surfaceContainerLow,
                                     focusedContainerColor =
-                                        if (dualPane) MaterialTheme.colorScheme.surfaceContainerHigh
+                                        if (dualPane)
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = .035f)
                                         else MaterialTheme.colorScheme.surfaceContainerLow,
                                     unfocusedBorderColor = Color.Transparent,
                                     focusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -432,6 +450,16 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            IconButton(
+                                onClick = { vm.newSession.open(project) },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Add,
+                                    "New session",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                     if (project.isNotEmpty())
@@ -508,6 +536,7 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                     item { SectionLabel("AGENT COMPUTERS") }
                     items(state.workspace.nodes, key = { it.node_id }) { item ->
                         Surface(
+                            onClick = { vm.nodeTools.open(item) },
                             shape = MaterialTheme.shapes.large,
                             color = MaterialTheme.colorScheme.surfaceContainerLow,
                         ) {
@@ -527,6 +556,10 @@ private fun WorkspaceHome(state: WorkspaceState, vm: WorkspaceViewModel, dualPan
                                             item.hostname.ifBlank { "Connected device" }
                                         },
                                         style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        "paxd ${item.paxd_version.ifBlank { "version unknown" }}",
+                                        style = MaterialTheme.typography.bodySmall,
                                     )
                                     StatusLabel(
                                         listOf(item.os, if (item.online) "Online" else "Offline")
@@ -734,6 +767,7 @@ private fun SessionScreen(
     state: WorkspaceState,
     vm: WorkspaceViewModel,
     dualPane: Boolean,
+    showSidebar: (() -> Unit)?,
 ) {
     val session by vm.session.collectAsStateWithLifecycle()
     var showActions by remember { mutableStateOf(false) }
@@ -744,7 +778,15 @@ private fun SessionScreen(
                 it.node_id == target.node_id &&
                 it.agent_id == target.agent_id
         } ?: target
-    val identity = conversationIdentity(currentTarget, state.workspace.nodes)
+    val presence =
+        key(target.node_id, target.agent_id) {
+            val value by
+                remember { vm.presence(target) }
+                    .collectAsStateWithLifecycle(initialValue = ConversationPresence())
+            value
+        }
+    val identity =
+        conversationIdentity(currentTarget, state.workspace.nodes).copy(presence = presence)
     if (showDetails) ConversationDetails(identity) { showDetails = false }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -758,13 +800,27 @@ private fun SessionScreen(
                                 target.title,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
                             )
-                            StatusLabel(session.connection, session.connection == "Connected")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                StatusLabel(session.connection, session.connection == "Connected")
+                                AgentWorkIndicator(
+                                    working = session.busy && session.connection == "Connected",
+                                    waitingForApproval =
+                                        state.workspace.approvals.any {
+                                            it.request_session_id == target.session_id
+                                        },
+                                )
+                            }
                         }
                     },
                     navigationIcon = {
-                        if (!dualPane)
+                        if (showSidebar != null)
+                            IconButton(onClick = showSidebar, modifier = Modifier.size(48.dp)) {
+                                Icon(WorkspaceSymbols.ExpandSidebar, "Show sidebar")
+                            }
+                        else if (!dualPane)
                             IconButton(onClick = vm::close, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
                             }
@@ -899,25 +955,31 @@ private fun SessionScreen(
                     }
                     state.error?.let { item { ErrorNotice(it) } }
                 }
-            } else
-                ConversationTimeline(
-                    messages = session.messages,
-                    identity = identity,
-                    connection = session.connection,
-                    hasOlder = session.hasOlder,
-                    loadingOlder = session.loadingOlder,
-                    onOlder = vm::older,
-                    motion = motion,
-                    waitingForReply = session.busy && session.messages.lastOrNull()?.role == "user",
-                    modifier = Modifier.padding(padding).fillMaxSize(),
-                    approvals =
-                        state.workspace.approvals.filter {
-                            it.request_session_id == target.session_id
+            } else {
+                CompositionLocalProvider(
+                    LocalAttachmentLoader provides { media -> vm.attachment(target, media) }
+                ) {
+                    ConversationTimeline(
+                        messages = session.messages,
+                        identity = identity,
+                        connection = session.connection,
+                        hasOlder = session.hasOlder,
+                        loadingOlder = session.loadingOlder,
+                        onOlder = vm::older,
+                        motion = motion,
+                        waitingForReply =
+                            session.busy && session.messages.lastOrNull()?.role == "user",
+                        modifier = Modifier.padding(padding).fillMaxSize(),
+                        approvals =
+                            state.workspace.approvals.filter {
+                                it.request_session_id == target.session_id
+                            },
+                        approval = { approval ->
+                            ApprovalCard(approval, state.working) { vm.decide(approval, it) }
                         },
-                    approval = { approval ->
-                        ApprovalCard(approval, state.working) { vm.decide(approval, it) }
-                    },
-                )
+                    )
+                }
+            }
         }
     }
 }

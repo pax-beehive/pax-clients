@@ -1,5 +1,7 @@
 package net.paxtech.workspace
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,6 +11,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -106,13 +109,18 @@ internal fun SessionRow(
     dualPane: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val rowColor by
+        animateColorAsState(
+            if (selected) MaterialTheme.colorScheme.primaryContainer
+            else if (dualPane) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+            tween(180),
+            label = "session selection",
+        )
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().semantics { this.selected = selected },
         shape = MaterialTheme.shapes.large,
-        color =
-            if (selected) MaterialTheme.colorScheme.primaryContainer
-            else if (dualPane) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        color = rowColor,
     ) {
         Row(
             Modifier.padding(if (dualPane) 12.dp else 16.dp),
@@ -160,7 +168,7 @@ internal fun SessionRow(
                         Text(
                             projectName,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.tertiary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

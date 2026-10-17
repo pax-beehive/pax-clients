@@ -25,6 +25,23 @@ internal object WorkspaceSymbols {
             }
             .build()
 
+    private fun sidebar(name: String, collapsed: Boolean) =
+        symbol(name) {
+            moveTo(3f, 5f)
+            lineTo(21f, 5f)
+            lineTo(21f, 19f)
+            lineTo(3f, 19f)
+            close()
+            moveTo(9f, 5f)
+            lineTo(9f, 19f)
+            moveTo(if (collapsed) 14f else 17f, 9f)
+            lineTo(if (collapsed) 17f else 14f, 12f)
+            lineTo(if (collapsed) 14f else 17f, 15f)
+        }
+
+    val ExpandSidebar = sidebar("ExpandSidebar", true)
+    val CollapseSidebar = sidebar("CollapseSidebar", false)
+
     val Computer =
         symbol("Computer") {
             moveTo(4f, 4f)

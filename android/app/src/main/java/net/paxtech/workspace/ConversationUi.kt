@@ -280,7 +280,9 @@ internal fun MessageCard(
                 },
             contentColor = if (isUser) UserMessageInk else MaterialTheme.colorScheme.onSurface,
             border =
-                if (isAgent) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+                if (isAgent)
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
+                else null,
             shape =
                 when {
                     isUser -> RoundedCornerShape(26.dp)
@@ -308,11 +310,16 @@ internal fun MessageCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                if (isAgent) MessageMarkdown(message.text)
-                else
-                    SelectionContainer {
-                        Text(message.text, style = MaterialTheme.typography.bodyMedium)
-                    }
+                message.attachments.forEach { attachment ->
+                    key(attachment) { AttachmentCard(attachment) }
+                }
+                if (message.text.isNotBlank()) {
+                    if (isAgent) MessageMarkdown(message.text)
+                    else
+                        SelectionContainer {
+                            Text(message.text, style = MaterialTheme.typography.bodyMedium)
+                        }
+                }
             }
         }
     }

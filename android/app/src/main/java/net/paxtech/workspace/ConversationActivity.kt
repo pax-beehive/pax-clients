@@ -1,5 +1,12 @@
 package net.paxtech.workspace
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -7,12 +14,12 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -63,6 +70,10 @@ internal fun ConversationActivity(entry: ConversationEntry) {
     val tools = entry.messages.filter { it.role == "tool" }
     val status = activityStatus(tools)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        entry.messages
+            .flatMap { it.attachments }
+            .distinct()
+            .forEach { attachment -> key(attachment) { AttachmentCard(attachment) } }
         ActivityDisclosure(
             title =
                 "Activity · ${entry.messages.size} ${if (entry.messages.size == 1) "step" else "steps"}",
@@ -72,34 +83,46 @@ internal fun ConversationActivity(entry: ConversationEntry) {
             modifier = Modifier.testTag("activity-group:${entry.id}"),
             onClick = { expanded = !expanded },
         )
-        if (expanded) {
-            entry.messages.forEach { message ->
-                key(message.id) {
-                    var details by rememberSaveable(message.id) { mutableStateOf(false) }
-                    Column(Modifier.padding(start = 12.dp)) {
-                        ActivityDisclosure(
-                            title =
-                                if (message.role == "thought") "Reasoning"
-                                else message.title.ifBlank { "Tool operation" },
-                            status = activityStatus(listOf(message)),
-                            expanded = details,
-                            modifier = Modifier.testTag("activity-step:${message.id}"),
-                            onClick = { details = !details },
-                        )
-                        if (details)
-                            SelectionContainer {
-                                Text(
-                                    message.text.ifBlank { "No additional details." },
-                                    Modifier.fillMaxWidth()
-                                        .heightIn(max = 240.dp)
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(12.dp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily =
-                                        if (message.role == "tool") FontFamily.Monospace else null,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+        AnimatedVisibility(
+            expanded,
+            enter = expandVertically(tween(200)) + fadeIn(tween(140)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                entry.messages.forEach { message ->
+                    key(message.id) {
+                        var details by rememberSaveable(message.id) { mutableStateOf(false) }
+                        Column(Modifier.padding(start = 12.dp)) {
+                            ActivityDisclosure(
+                                title =
+                                    if (message.role == "thought") "Reasoning"
+                                    else message.title.ifBlank { "Tool operation" },
+                                status = activityStatus(listOf(message)),
+                                expanded = details,
+                                modifier = Modifier.testTag("activity-step:${message.id}"),
+                                onClick = { details = !details },
+                            )
+                            AnimatedVisibility(
+                                details,
+                                enter = expandVertically(tween(200)) + fadeIn(tween(140)),
+                                exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+                            ) {
+                                SelectionContainer {
+                                    Text(
+                                        message.text.ifBlank { "No additional details." },
+                                        Modifier.fillMaxWidth()
+                                            .heightIn(max = 240.dp)
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(12.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily =
+                                            if (message.role == "tool") FontFamily.Monospace
+                                            else null,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
+                        }
                     }
                 }
             }
@@ -116,6 +139,8 @@ private fun ActivityDisclosure(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val arrow by
+        animateFloatAsState(if (expanded) 180f else 0f, tween(180), label = "disclosure arrow")
     Surface(
         onClick = onClick,
         modifier =
@@ -161,9 +186,9 @@ private fun ActivityDisclosure(
                     )
             }
             Icon(
-                if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                Icons.Outlined.KeyboardArrowDown,
                 null,
-                Modifier.size(20.dp),
+                Modifier.size(20.dp).graphicsLayer { rotationZ = arrow },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,7 +21,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
@@ -34,13 +32,13 @@ internal fun HomeViewSwitch(selected: String, onSelect: (String) -> Unit) {
             animationSpec = spring(dampingRatio = 1f, stiffness = 500f),
             label = "Home selection position",
         )
-    val indicatorColor = MaterialTheme.colorScheme.primaryContainer
+    val indicatorColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Row(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(4.dp)
             .drawBehind {
                 // Use current layout geometry so folding/resizing never leaves a stale offset.
@@ -51,7 +49,7 @@ internal fun HomeViewSwitch(selected: String, onSelect: (String) -> Unit) {
                     color = indicatorColor,
                     topLeft = Offset(progress * (width + gap), 0f),
                     size = Size(width, size.height),
-                    cornerRadius = CornerRadius(size.height / 2f),
+                    cornerRadius = CornerRadius(8.dp.toPx()),
                 )
             }
             .selectableGroup(),
@@ -62,7 +60,7 @@ internal fun HomeViewSwitch(selected: String, onSelect: (String) -> Unit) {
             val textColor by
                 animateColorAsState(
                     targetValue =
-                        if (active) MaterialTheme.colorScheme.onPrimaryContainer
+                        if (active) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     animationSpec = tween(180),
                     label = "$label selection color",
@@ -70,18 +68,13 @@ internal fun HomeViewSwitch(selected: String, onSelect: (String) -> Unit) {
             Box(
                 Modifier.weight(1f)
                     .heightIn(min = 48.dp)
-                    .clip(CircleShape)
+                    .clip(MaterialTheme.shapes.small)
                     .selectable(active, role = Role.RadioButton, onClick = { onSelect(key) })
                     .testTag("home-${label.lowercase()}")
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = textColor,
-                )
+                Text(label, style = MaterialTheme.typography.labelLarge, color = textColor)
             }
         }
     }

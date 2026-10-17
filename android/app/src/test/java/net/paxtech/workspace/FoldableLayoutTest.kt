@@ -22,6 +22,30 @@ class FoldableLayoutTest {
     }
 
     @Test
+    fun collapsedSidebarGivesSelectedConversationTheWholeExpandedWindow() {
+        for (density in listOf(1f, 2f, 3f)) {
+            val width = (800 * density).toInt()
+            val plan = panePlan(width, 1800, density, true, sidebarCollapsed = true)
+            assertNull(plan.home)
+            assertEquals(PaneBounds(0, 0, width, 1800), plan.detail)
+            assertNotNull(panePlan(width, 1800, density, false, sidebarCollapsed = true).home)
+        }
+    }
+
+    @Test
+    fun collapsedPreferenceNeverSpansASeparatingHinge() {
+        val hinge = PaneBounds(780, 0, 820, 1800)
+        assertEquals(
+            panePlan(1600, 1800, 2f, true, hinge),
+            panePlan(1600, 1800, 2f, true, hinge, sidebarCollapsed = true),
+        )
+        assertEquals(
+            panePlan(400, 900, 1f, true),
+            panePlan(400, 900, 1f, true, sidebarCollapsed = true),
+        )
+    }
+
+    @Test
     fun separatesBothPanesAroundBookHinge() {
         val plan = panePlan(1600, 1800, 2f, true, PaneBounds(780, 0, 820, 1800))
         assertEquals(780, plan.home!!.right)

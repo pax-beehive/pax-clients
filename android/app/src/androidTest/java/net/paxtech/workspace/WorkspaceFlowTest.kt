@@ -31,6 +31,7 @@ class WorkspaceFlowTest {
     @Volatile private var streaming = false
     @Volatile private var createdSession: JsonObject? = null
     @Volatile private var creationCount = 0
+    @Volatile private var initializationCount = 0
     @Volatile private var createdProject: JsonObject? = null
     @Volatile private var projectCreationCount = 0
 
@@ -55,6 +56,31 @@ class WorkspaceFlowTest {
                                 "data: {\"type\":\"no_running_turn\",\"session_id\":\"${path.substringBeforeLast("/events").substringAfterLast("/")}\"}\n\n"
                             )
                     if (path.endsWith("/conversation")) {
+                        val body = wireJson.parseToJsonElement(request.body.readUtf8()).jsonObject
+                        if (body.flag("initialize_only")) {
+                            initializationCount++
+                            check(body.text("cwd") == "/workspace/android")
+                            check(!body.containsKey("session_id") && !body.containsKey("input"))
+                            return MockResponse()
+                                .setHeader("Content-Type", "text/event-stream")
+                                .setBody(
+                                    listOf("session", "done").joinToString("") {
+                                        "data: {\"type\":\"$it\",\"session_id\":\"sess_initialized\",\"node_id\":\"node_test\",\"agent_id\":\"agent_test\"}\n\n"
+                                    }
+                                )
+                        }
+                        if (
+                            createdSession != null &&
+                                (initializationCount != 1 ||
+                                    body.text("session_id") != "sess_initialized")
+                        ) {
+                            return MockResponse()
+                                .setResponseCode(409)
+                                .setHeader("Content-Type", "application/json")
+                                .setBody(
+                                    """{"code":409,"message":"session has no native ACP session id"}"""
+                                )
+                        }
                         sent = true
                         if (streaming) {
                             fun chunk(text: String) =
@@ -79,7 +105,7 @@ class WorkspaceFlowTest {
                         return MockResponse()
                             .setHeader("Content-Type", "text/event-stream")
                             .setBody(
-                                "data: {\"type\":\"done\",\"session_id\":\"session_test\"}\n\n"
+                                "data: {\"type\":\"done\",\"session_id\":\"${body.text("session_id")}\"}\n\n"
                             )
                     }
                     val data =
@@ -115,10 +141,10 @@ class WorkspaceFlowTest {
                                 creationCount++
                                 createdSession =
                                     wireJson.parseToJsonElement(request.body.readUtf8()).jsonObject
-                                """{"session_id":"${createdSession!!.text("session_id")}","node_id":"node_test","agent_id":"agent_test","agent_type":"codex","name":"${createdSession!!.text("name")}","workspace_roots":["/workspace/android"],"runtime_status":"idle"}"""
+                                """{"session_id":"${createdSession!!.text("session_id")}","node_id":"node_test","agent_id":"agent_test","agent_type":"codex","name":"${createdSession!!.text("name")}","workspace_roots":["/workspace/android"],"native_id":"native_initialized","runtime_status":"idle"}"""
                             }
                             path.endsWith("/agents") ->
-                                """{"agents":[{"agent_id":"agent_test","name":"Codex","online":true}]}"""
+                                """{"agents":[{"node_id":"node_test","agent_id":"agent_test","name":"Codex","online":true}]}"""
                             path.endsWith("/targets") ->
                                 """{"targets":[{"target_id":"target_test","agent_id":"agent_test","display_name":"Android workspace","cwd":"/workspace/android","is_default":true,"enabled":true}]}"""
                             gallery && path.endsWith("/sessions") ->
@@ -145,6 +171,8 @@ class WorkspaceFlowTest {
                                 """{"projects":[{"project_id":"project_test","display_name":"Android project"}${createdProject?.let { ",$it" }.orEmpty()}]}"""
                             path.endsWith("/nodes") ->
                                 """{"nodes":[{"node_id":"node_test","name":"Test workstation","online":true}]}"""
+                            path.endsWith("/nodes/node_test") ->
+                                """{"node_id":"node_test","name":"Test workstation","online":true}"""
                             path.endsWith("/approvals") ->
                                 if (decision) """{"approvals":[]}"""
                                 else
@@ -280,11 +308,14 @@ class WorkspaceFlowTest {
         compose.waitUntil(10000) { createdSession != null }
         awaitText("Hello from the test agent")
         assertEquals(1, creationCount)
+        assertEquals(1, initializationCount)
+        assertFalse(sent)
         assertEquals("project_test", createdSession!!.text("primary_project_id"))
         assertEquals("/workspace/android", createdSession!!.obj("pax_config").text("cwd"))
         compose.onNodeWithTag("message-composer").performTextInput("Inspect the new project")
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(5000) { sent }
+        awaitText("Instruction received")
         capture("new-session-conversation")
     }
 
@@ -355,6 +386,22 @@ class WorkspaceFlowTest {
         awaitText("Hello from the test agent")
         compose.onNodeWithText("Codex").assertIsDisplayed()
         compose.onNodeWithText("Test workstation").assertIsDisplayed()
+        compose.waitUntil(15000) {
+            compose
+                .onAllNodes(
+                    SemanticsMatcher.expectValue(
+                        SemanticsProperties.StateDescription,
+                        "Agent Online",
+                    )
+                )
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose
+            .onNode(
+                SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Device Online")
+            )
+            .assertIsDisplayed()
         compose.onNodeWithText("Agent").assertDoesNotExist()
         compose.onNodeWithContentDescription("Session actions").performClick()
         compose.onNodeWithText("Session details").performClick()
@@ -391,7 +438,7 @@ class WorkspaceFlowTest {
 
     @Test
     fun preservesDraftAndSelectionAcrossWindowResizeAndRecreation() {
-        fun resize(expanded: Boolean) {
+        fun resize(expanded: Boolean, sidebarVisible: Boolean = expanded) {
             val dimensions = if (expanded) "2200x2480" else "1080x2400"
             InstrumentationRegistry.getInstrumentation()
                 .uiAutomation
@@ -410,7 +457,7 @@ class WorkspaceFlowTest {
             if (scenario != null)
                 compose.waitUntil(15000) {
                     runCatching { compose.onNodeWithText("Search sessions").assertIsDisplayed() }
-                        .isSuccess == expanded
+                        .isSuccess == sidebarVisible
                 }
         }
         resize(true)
@@ -428,20 +475,59 @@ class WorkspaceFlowTest {
         compose.onNodeWithContentDescription("Session actions").performClick()
         compose.onNodeWithText("Session details").performClick()
         compose.onNodeWithText("Device").assertIsDisplayed()
-        compose.onNodeWithText("Test workstation").assertIsDisplayed()
+        compose
+            .onNode(hasText("Test workstation") and hasAnyAncestor(isDialog()))
+            .assertIsDisplayed()
         capture("conversation-identity-details")
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithText("Message your agent").performTextInput("Keep my draft while folding")
         capture("window-expanded")
         compose.onNodeWithText("Search sessions").assertIsDisplayed()
+        compose
+            .onNodeWithContentDescription("Hide sidebar")
+            .assert(hasAnyAncestor(hasTestTag("workspace-list")))
+        val refreshBounds =
+            compose
+                .onNodeWithContentDescription("Refresh workspace")
+                .fetchSemanticsNode()
+                .boundsInRoot
+        val collapseBounds =
+            compose.onNodeWithContentDescription("Hide sidebar").fetchSemanticsNode().boundsInRoot
+        assertTrue("Refresh must be left of collapse", refreshBounds.right <= collapseBounds.left)
+        val recentBounds =
+            compose.onNodeWithText("Recent sessions").fetchSemanticsNode().boundsInRoot
+        val addBounds =
+            compose.onNodeWithContentDescription("New session").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "New session belongs to the recent sessions heading",
+            addBounds.top <= recentBounds.center.y && addBounds.bottom >= recentBounds.center.y,
+        )
+        assertTrue(addBounds.left > recentBounds.right)
+        val splitWidth =
+            compose.onNodeWithTag("workspace-detail").fetchSemanticsNode().boundsInRoot.width
+        compose.onNodeWithContentDescription("Hide sidebar").performClick()
+        compose.onNodeWithText("Search sessions").assertIsNotDisplayed()
+        compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()
+        val fullWidth =
+            compose.onNodeWithTag("workspace-detail").fetchSemanticsNode().boundsInRoot.width
+        assertTrue("Conversation should gain the sidebar's width", fullWidth > splitWidth)
+        capture("window-sidebar-collapsed")
+        scenario!!.recreate()
+        awaitText("Keep my draft while folding")
+        compose.onNodeWithContentDescription("Show sidebar").assertIsDisplayed()
+        compose.onNodeWithText("Search sessions").assertIsNotDisplayed()
         resize(false)
         awaitText("Keep my draft while folding")
         compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()
         compose.onNodeWithText("Search sessions").assertIsNotDisplayed()
         capture("window-compact")
-        resize(true)
+        compose.onNodeWithContentDescription("Back").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Show sidebar").assertDoesNotExist()
+        resize(true, sidebarVisible = false)
         awaitText("Keep my draft while folding")
+        compose.onNodeWithContentDescription("Show sidebar").performClick()
         compose.onNodeWithText("Search sessions").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Hide sidebar").assertIsDisplayed()
         scenario!!.recreate()
         awaitText("Keep my draft while folding")
         compose.onNodeWithText("Keep my draft while folding").assertIsDisplayed()

@@ -11,17 +11,56 @@ the computer clears the previous directory. Offline computers and Agents cannot
 be selected. The form survives Activity recreation and folding via ViewModel
 state. Process death can discard an unsubmitted form.
 
-Creating opens the returned session immediately and adds it to the local recent
-list. The first message uses the existing runtime. The server-returned transport
-is preserved, including the existing encryption/key-approval boundary. New
-sessions use the server's default transport and approval settings.
+Creating first calls the existing conversation endpoint with `initialize_only: true`,
+`cwd`, and the optional project ID. No prompt or client-chosen session ID is sent.
+The Manager performs ACP `session/new`, persists the native binding, then emits
+`session` and `done` SSE events. Android verifies the returned node/Agent/session
+identity before applying the optional name and roots through the existing
+session-record POST. Only a confirmed native binding opens the conversation.
 
-The client assigns one manager session identity per form; it never supplies a
-native/ACP session ID. Duplicate taps and dismissal during creation are blocked.
-An unknown mutation outcome offers **Check status**, which reads that same ID
-without repeating the POST. Recovery verifies the configured project and working
-directory before opening, since the server write can partially succeed. Closing
-an uncertain form does not delete any server session.
+The normal creation form uses Manager transport and server approval defaults.
+Existing encrypted sessions retain their encrypted-command initialization and
+key-approval boundary; no E2EE session is converted to plain transport.
+
+Duplicate taps and dismissal during creation are blocked. Once a server-assigned
+ID arrives, it is kept even if the stream or the metadata update subsequently
+fails. **Check status** reads that identity and verifies its project, working
+directory and native binding; it never repeats initialization. If the response
+was lost before an ID arrived, the user is directed to refresh Sessions and
+inspect the list. There is no guessed identity or automatic mutation replay.
+Closing an uncertain form does not delete any server session. If only the
+optional metadata update failed, recovery can open the initialized session with
+its server-provided name.
+
+## First-message 409 fix (2026-10-16)
+
+The original form only registered a session record. Manager's
+`resolveConversationSession` rejects any normal prompt whose record has no
+`native_id` with HTTP 409 (`session has no native ACP session id`). The original
+fixture accepted prompts without enforcing that contract, so it missed the bug.
+The initialization flow above follows `handleConversation` / `initialize_only`
+in the current sibling Manager checkout and does not need gateway changes.
+
+Old record-only sessions cannot be initialized in place through the current
+conversation API (`initialize_only` rejects an existing `session_id`). They show
+an actionable message to create a new session; the client never silently moves
+or resends a user's prompt. Bounded JSON HTTP error reasons are displayed, with
+generic fallbacks for malformed, oversized or HTML gateway responses.
+
+Regression fixtures cover initialization before metadata, server-assigned IDs,
+no prompt during creation, missing native bindings, interrupted SSE before and
+after identity assignment, failure after initialization, duplicate taps, and
+preserving E2EE transport during recovery. The UI fixture enforces initialized
+identity on the first prompt and waits for the canonical response.
+
+Verification for this fix: build, lint and all 72 JVM tests passed. The isolated
+emulator's `createsSessionFromProjectAndPreservesFormOnRecreation` test passed,
+including the initialization/first-prompt contract and canonical response. APK
+was installed on Pixel 11 Pro Fold with `adb install -r`, and the installed
+base.apk hash matched `artifacts/session-init-409-2026-10-16/PaxWorkspace-debug.apk`:
+`6dd1077c1af7274e02a51c83df09659ce90af130db94d0f450ebc0dc3db3d923`.
+The app launch returned `Status: ok`. No real user prompt was replayed; production
+Agent response acceptance remains a user-device check. The validated fix is included in the main submission.
 
 ## Verified contracts
 
@@ -33,7 +72,8 @@ Sources in sibling `pax-manager-android-native`, base `a3d01e4`:
 - `internal/manager/userapi/service.go`: node-scoped Agent list and create response.
 - `internal/manager/userapi/project_target.go`: explicit project target collection.
 - `internal/manager/storage/postgres_store.go`: persists the working directory.
-- `internal/manager/conversation.go`: new runtime initialization uses pax_config.cwd.
+- `internal/manager/conversation.go`: `initialize_only` creates ACP/native binding
+  with request `cwd`; registered records without a native ID reject prompts (409).
 
 The WorkOS native gateway needs these three exact existing Manager routes:
 

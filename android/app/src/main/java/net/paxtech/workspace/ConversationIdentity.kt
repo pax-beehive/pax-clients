@@ -8,17 +8,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import net.paxtech.workspace.data.AgentSession
+import net.paxtech.workspace.data.ConversationPresence
 import net.paxtech.workspace.data.Node
 
 internal data class ConversationIdentity(
     val agentName: String = "Assistant",
     val deviceName: String = "",
+    val presence: ConversationPresence = ConversationPresence(),
 )
 
 internal fun conversationIdentity(session: AgentSession, nodes: List<Node>): ConversationIdentity {
@@ -52,57 +58,74 @@ internal fun conversationIdentity(session: AgentSession, nodes: List<Node>): Con
 
 @Composable
 internal fun ConversationByline(identity: ConversationIdentity) {
-    val accent =
-        when (identity.agentName) {
-            "Codex" -> MaterialTheme.colorScheme.secondary
-            "Claude" -> MaterialTheme.colorScheme.tertiary
-            "Assistant" -> MaterialTheme.colorScheme.onSurfaceVariant
-            else -> MaterialTheme.colorScheme.primary
-        }
     FlowRow(
-        Modifier.padding(bottom = 10.dp).semantics(mergeDescendants = true) {},
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(WorkspaceSymbols.Agent, null, Modifier.size(16.dp), tint = accent)
+        IdentityPresence(
+            WorkspaceSymbols.Agent,
+            identity.agentName,
+            "Agent",
+            identity.presence.agentOnline,
+            Modifier.alignByBaseline(),
+        )
+        if (identity.deviceName.isNotBlank())
+            IdentityPresence(
+                WorkspaceSymbols.Computer,
+                identity.deviceName,
+                "Device",
+                identity.presence.deviceOnline,
+                Modifier.alignByBaseline(),
+            )
+    }
+}
+
+private fun presenceLabel(online: Boolean?) =
+    when (online) {
+        true -> "Online"
+        false -> "Offline"
+        null -> "Unknown"
+    }
+
+@Composable
+private fun IdentityPresence(
+    icon: ImageVector,
+    name: String,
+    kind: String,
+    online: Boolean?,
+    modifier: Modifier,
+) {
+    val label = presenceLabel(online)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier.widthIn(max = 300.dp).heightIn(min = 24.dp).semantics(mergeDescendants = true) {
+            stateDescription = "$kind $label"
+        },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, Modifier.size(16.dp), tint = muted)
+        Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                identity.agentName,
+                name,
+                Modifier.weight(1f, fill = false).alignByBaseline(),
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = accent,
+                color = muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        if (identity.deviceName.isNotBlank()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    "·",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Icon(
-                    WorkspaceSymbols.Computer,
-                    null,
-                    Modifier.size(13.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    identity.deviceName,
-                    Modifier.widthIn(max = 220.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = if (online == true) WorkspaceSuccess else muted)) {
+                        append("• ")
+                    }
+                    append(label)
+                },
+                Modifier.alignByBaseline(),
+                style = MaterialTheme.typography.labelMedium,
+                color = muted,
+            )
         }
     }
 }
@@ -125,6 +148,10 @@ internal fun ConversationDetails(identity: ConversationIdentity, onDismiss: () -
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(identity.agentName)
+                        Text(
+                            presenceLabel(identity.presence.agentOnline),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
@@ -133,6 +160,10 @@ internal fun ConversationDetails(identity: ConversationIdentity, onDismiss: () -
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(identity.deviceName)
+                        Text(
+                            presenceLabel(identity.presence.deviceOnline),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                 }
             }

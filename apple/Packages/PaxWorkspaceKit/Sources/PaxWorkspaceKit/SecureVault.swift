@@ -32,6 +32,7 @@ struct Pairing: Codable, Sendable {
   let secret: String
 }
 struct VaultData: Codable, Sendable {
+  var pendingUpgrades: [String: PendingUpgrade]?
   var account: Account?
   var session: UserSession?
   var oauth: OAuthPending?

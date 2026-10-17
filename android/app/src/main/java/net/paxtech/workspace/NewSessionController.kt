@@ -1,13 +1,12 @@
 package net.paxtech.workspace
 
-import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import net.paxtech.workspace.data.*
 import net.paxtech.workspace.network.ApiFailure
 
 data class NewSessionState(
-    val draft: SessionDraft = SessionDraft("sess_${UUID.randomUUID()}"),
+    val draft: SessionDraft = SessionDraft(""),
     val options: SessionOptions? = null,
     val targets: List<ProjectTarget> = emptyList(),
     val targetId: String = "",
@@ -39,16 +38,27 @@ class NewSessionController(
     val state = mutable.asStateFlow()
     private var loadJob: Job? = null
 
+    val directories =
+        DirectoryBrowserController(scope, repo::directories) { node, path ->
+            if (mutable.value?.draft?.nodeId == node) cwd(path)
+        }
+
+    fun browse() {
+        val current = mutable.value ?: return
+        if (current.editable && current.draft.nodeId.isNotBlank())
+            directories.open(current.draft.nodeId)
+    }
+
     fun open(projectId: String = "") {
         if (mutable.value != null) return
-        mutable.value =
-            NewSessionState(draft = SessionDraft("sess_${UUID.randomUUID()}", projectId))
+        mutable.value = NewSessionState(draft = SessionDraft("", projectId))
         reload()
     }
 
     fun dismiss() {
         if (mutable.value?.creating == true) return
         loadJob?.cancel()
+        directories.dismiss()
         mutable.value = null
     }
 
@@ -168,21 +178,31 @@ class NewSessionController(
             try {
                 val session =
                     if (current.uncertain) repo.findCreatedSession(current.draft)
-                    else repo.createSession(current.draft)
+                    else
+                        repo.createSession(current.draft) { id ->
+                            mutable.update { it?.copy(draft = it.draft.copy(id = id)) }
+                        }
                 mutable.value = null
                 onCreated(session)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val uncertain =
-                    current.uncertain || e !is ApiFailure || e.status >= 500 || e.status == 408
+                    current.uncertain ||
+                        mutable.value?.draft?.id?.isNotBlank() == true ||
+                        e !is ApiFailure ||
+                        e.status >= 500 ||
+                        e.status == 408
                 mutable.update {
                     it?.copy(
                         creating = false,
                         uncertain = uncertain,
                         error =
                             if (uncertain)
-                                "Creation could not be confirmed. Check status before starting another session."
+                                if (current.uncertain)
+                                    e.message ?: "Creation could not be confirmed."
+                                else
+                                    "Creation could not be confirmed. Check status before starting another session."
                             else e.message ?: "Could not create session",
                     )
                 }
