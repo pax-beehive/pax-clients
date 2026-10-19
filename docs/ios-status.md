@@ -149,7 +149,7 @@ changed by this follow-up.
 | Welcome | Original Pax mark, density-scaled warm/cool starfield, same day/cloud/night NASA textures, shared J2000 orbit elements/time scale, Earth rotation, tidally facing Moon, three inclined spacecraft orbits, seven distant planets plus Sun and Saturn rings |
 | Entry | Signed-in welcome and camera approach/dissolve into workspace; animation pauses when inactive and respects Reduce Motion |
 | Sending | Immediate dispatch/local echo retained; a 420 ms TextKit glyph-fragment flight follows the measured composer and bubble; matches canonical turn/user/text, follows a moving landing row, settles on resize/disappearance, skips code/bidi/overflow/accessibility text/reduced motion |
-| Activity | Adjacent tool/reasoning steps grouped only within the same turn, status summary, nested disclosures with bounded selectable details; approvals and answers remain visible |
+| Activity | Adjacent tool/reasoning/permission steps grouped only within the same turn, status summary, nested disclosures with bounded selectable details; answers stay separate and pending approvals remain available through Approvals |
 | Markdown | Pinned Swift Markdown 0.7.3 / cmark-gfm parser, nested lists/quotes, reference links, task boxes, tables with alignment, unfinished/indented code, literal HTML, explicit HTTPS image loading, safe link schemes, copy feedback and light/dark code colors |
 | Limits | Same 150 KB rich-content and 20 KB code-coloring bounds as Android; plain selectable fallback, wrapping for exceptionally long code lines, bounded nesting |
 | Details | Canonical agent display names and device names, session-details sheet, explicit approval confirmation |

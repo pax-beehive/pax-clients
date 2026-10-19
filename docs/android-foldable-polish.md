@@ -35,10 +35,10 @@ branding are bundled in the app.
   and expose selection to accessibility services.
 - Tapping the selected session again does not restart its connection or interrupt
   its reply. Search focus is still dismissed.
-- Consecutive reasoning and tool operations from one turn share a collapsed
-  **Activity · N steps** row. Opening it reveals per-step disclosures; full text
+- Consecutive reasoning, tool operations, and permission notices from one turn
+  share a collapsed **Activity · N steps** row. Opening it reveals per-step disclosures; full text
   and command output remain selectable, with long output scrolled inside the detail.
-  Failures stay visible on the summary, and approvals remain separate actionable cards.
+  Failures stay visible on the summary, and pending approvals remain separate actionable cards.
 - Stored thought message types and thought parts are normalized separately from
   assistant prose, matching the web client's history conventions. Mixed messages
   preserve part order and keep answer text visible. Replacing or prepending history

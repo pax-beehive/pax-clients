@@ -28,22 +28,36 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.paxtech.workspace.session.ChatItem
 
+private val activityRoles = setOf("tool", "thought", "approval")
+
+internal val ChatItem.activityTitle: String
+    get() =
+        when (role) {
+            "thought" -> "Reasoning"
+            "approval" -> title.ifBlank { "Permission request" }
+            else -> title.ifBlank { "Tool operation" }
+        }
+
 internal data class ConversationEntry(val messages: List<ChatItem>) {
     val id
         get() = messages.first().id
 
     val isActivity
-        get() = messages.first().role in setOf("tool", "thought")
+        get() = messages.first().role in activityRoles
+
+    val subtitle: String
+        get() =
+            messages.lastOrNull { it.role in setOf("tool", "approval") }?.activityTitle ?: "Reasoning"
 }
 
-/** Only adjacent activity from the same turn is grouped; replies and approvals stay visible. */
+/** Group adjacent tool, thought, and permission activity within a turn; keep replies separate. */
 internal fun conversationEntries(messages: List<ChatItem>): List<ConversationEntry> {
     val groups = mutableListOf<MutableList<ChatItem>>()
     for (message in messages) {
         val previous = groups.lastOrNull()?.lastOrNull()
         if (
-            message.role in setOf("tool", "thought") &&
-                previous?.role in setOf("tool", "thought") &&
+            message.role in activityRoles &&
+                previous?.role in activityRoles &&
                 previous?.turn == message.turn
         ) {
             groups.last().add(message)
@@ -77,7 +91,7 @@ internal fun ConversationActivity(entry: ConversationEntry) {
         ActivityDisclosure(
             title =
                 "Activity · ${entry.messages.size} ${if (entry.messages.size == 1) "step" else "steps"}",
-            subtitle = tools.lastOrNull()?.title?.ifBlank { "Tool operation" } ?: "Reasoning",
+            subtitle = entry.subtitle,
             status = status,
             expanded = expanded,
             modifier = Modifier.testTag("activity-group:${entry.id}"),
@@ -94,9 +108,7 @@ internal fun ConversationActivity(entry: ConversationEntry) {
                         var details by rememberSaveable(message.id) { mutableStateOf(false) }
                         Column(Modifier.padding(start = 12.dp)) {
                             ActivityDisclosure(
-                                title =
-                                    if (message.role == "thought") "Reasoning"
-                                    else message.title.ifBlank { "Tool operation" },
+                                title = message.activityTitle,
                                 status = activityStatus(listOf(message)),
                                 expanded = details,
                                 modifier = Modifier.testTag("activity-step:${message.id}"),
