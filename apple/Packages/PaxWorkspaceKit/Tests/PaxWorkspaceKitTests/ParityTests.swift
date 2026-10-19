@@ -85,10 +85,51 @@ struct ParityTests {
       ChatItem(id: "6", turn: "c", role: "approval", text: "Approve"),
     ]
     let groups = ConversationEntry.grouped(messages)
-    #expect(groups.count == 5)
+    #expect(groups.count == 4)
     #expect(groups[0].messages.count == 2)
     #expect(groups[0].status == "Failed")
+    #expect(groups.last!.isActivity)
+    #expect(groups.last!.messages.count == 2)
+  }
+  @Test func manyPermissionRequestsFoldTogetherWhileConversationStaysSeparate() {
+    let activity = (1...30).flatMap { index in
+      [
+        ChatItem(id: "permission:\(index)", turn: "turn", role: "approval", text: "Review request"),
+        ChatItem(id: "tool:\(index)", turn: "turn", role: "tool", text: "Output"),
+      ]
+    }
+    let question = ChatItem(id: "question", turn: "turn", role: "user", text: "Question")
+    let answer = ChatItem(id: "answer", turn: "turn", role: "agent", text: "Visible answer")
+    let messages = [question] + activity + [answer]
+
+    let groups = ConversationEntry.grouped(messages)
+
+    #expect(groups.map { $0.messages.count } == [1, 60, 1])
+    #expect(groups.first?.messages == [question])
+    #expect(groups.last?.messages == [answer])
+    #expect(!groups.first!.isActivity)
     #expect(!groups.last!.isActivity)
+    #expect(groups[1].isActivity)
+    #expect(groups[1].id == "permission:1")
+    #expect(groups.flatMap(\.messages) == messages)
+  }
+  @Test func permissionOnlyGroupsRespectTurnAndReplyBoundaries() {
+    let messages = [
+      ChatItem(id: "p1", turn: "a", role: "approval", text: "Review", title: "Read files"),
+      ChatItem(id: "p2", turn: "a", role: "approval", text: "Review"),
+      ChatItem(id: "p3", turn: "b", role: "approval", text: "Review", title: "Run checks"),
+      ChatItem(id: "answer", turn: "b", role: "assistant", text: "Visible answer"),
+      ChatItem(id: "p4", turn: "b", role: "approval", text: "Review", title: "Write files"),
+    ]
+
+    let groups = ConversationEntry.grouped(messages)
+
+    #expect(groups.map { $0.messages.count } == [2, 1, 1, 1])
+    #expect(groups.map(\.isActivity) == [true, true, false, true])
+    #expect(groups[0].subtitle == "Permission request")
+    #expect(groups[1].subtitle == "Run checks")
+    #expect(messages.last?.activityTitle == "Write files")
+    #expect(groups.flatMap(\.messages) == messages)
   }
   @Test func orbitalContinuityAndHiddenBackHemisphere() {
     let orbit = SolarSystem.earth

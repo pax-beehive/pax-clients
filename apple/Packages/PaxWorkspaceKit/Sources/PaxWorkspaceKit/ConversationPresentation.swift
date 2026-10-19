@@ -1,9 +1,22 @@
 import Foundation
 
+extension ChatItem {
+  var activityTitle: String {
+    switch role {
+    case "thought": "Reasoning"
+    case "approval": title.isEmpty ? "Permission request" : title
+    default: title.isEmpty ? "Tool operation" : title
+    }
+  }
+}
+
 struct ConversationEntry: Identifiable, Equatable {
   var messages: [ChatItem]
   var id: String { messages[0].id }
-  var isActivity: Bool { ["tool", "thought"].contains(messages[0].role) }
+  var isActivity: Bool { ["tool", "thought", "approval"].contains(messages[0].role) }
+  var subtitle: String {
+    messages.last(where: { ["tool", "approval"].contains($0.role) })?.activityTitle ?? "Reasoning"
+  }
   var status: String {
     let states = messages.filter { $0.role == "tool" }.map { $0.status.lowercased() }
     if states.contains(where: { ["failed", "error"].contains($0) }) { return "Failed" }
@@ -20,7 +33,7 @@ struct ConversationEntry: Identifiable, Equatable {
   static func grouped(_ messages: [ChatItem]) -> [Self] {
     var result: [Self] = []
     for message in messages {
-      if ["tool", "thought"].contains(message.role), let last = result.last, last.isActivity,
+      if ["tool", "thought", "approval"].contains(message.role), let last = result.last, last.isActivity,
         last.messages.last?.turn == message.turn
       {
         result[result.count - 1].messages.append(message)
@@ -58,11 +71,7 @@ extension Session {
                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
             }.frame(maxHeight: 240)
           } label: {
-            Text(
-              item.role == "thought"
-                ? "Reasoning" : item.title.isEmpty ? "Tool operation" : item.title
-            )
-            .font(.callout)
+            Text(item.activityTitle).font(.callout)
           }.padding(.leading, 8)
         }
       } label: {
@@ -70,7 +79,7 @@ extension Session {
           Text("Activity · \(entry.messages.count) \(entry.messages.count == 1 ? "step" : "steps")")
             .font(.callout.weight(.medium))
           Text(
-            [entry.messages.last(where: { $0.role == "tool" })?.title ?? "Reasoning", entry.status]
+            [entry.subtitle, entry.status]
               .filter { !$0.isEmpty }.joined(separator: " · ")
           ).font(.caption).foregroundStyle(.secondary)
         }

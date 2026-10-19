@@ -22,10 +22,56 @@ class ConversationActivityTest {
                 ChatItem("cmd4", "b", "tool", "Other turn"),
             )
         val entries = conversationEntries(messages)
-        assertEquals(listOf(1, 2, 1, 1, 1, 1, 1), entries.map { it.messages.size })
+        assertEquals(listOf(1, 2, 1, 3, 1), entries.map { it.messages.size })
         assertEquals(messages, entries.flatMap { it.messages })
         assertEquals("t", entries[1].id)
-        assertFalse(entries[4].isActivity)
+        assertTrue(entries[3].isActivity)
+    }
+
+    @Test
+    fun manyPermissionRequestsFoldTogetherWhileConversationStaysSeparate() {
+        val activity =
+            (1..30).flatMap {
+                listOf(
+                    ChatItem("permission:$it", "turn", "approval", "Review request $it"),
+                    ChatItem("tool:$it", "turn", "tool", "Output $it"),
+                )
+            }
+        val question = ChatItem("question", "turn", "user", "Question")
+        val answer = ChatItem("answer", "turn", "agent", "Visible answer")
+        val messages = listOf(question) + activity + answer
+
+        val entries = conversationEntries(messages)
+
+        assertEquals(listOf(1, 60, 1), entries.map { it.messages.size })
+        assertEquals(listOf(question), entries.first().messages)
+        assertEquals(listOf(answer), entries.last().messages)
+        assertFalse(entries.first().isActivity)
+        assertFalse(entries.last().isActivity)
+        assertTrue(entries[1].isActivity)
+        assertEquals("permission:1", entries[1].id)
+        assertEquals(messages, entries.flatMap { it.messages })
+    }
+
+    @Test
+    fun permissionOnlyGroupsRespectTurnAndReplyBoundaries() {
+        val messages =
+            listOf(
+                ChatItem("p1", "a", "approval", "Review", "Read files"),
+                ChatItem("p2", "a", "approval", "Review"),
+                ChatItem("p3", "b", "approval", "Review", "Run checks"),
+                ChatItem("answer", "b", "assistant", "Visible answer"),
+                ChatItem("p4", "b", "approval", "Review", "Write files"),
+            )
+
+        val entries = conversationEntries(messages)
+
+        assertEquals(listOf(2, 1, 1, 1), entries.map { it.messages.size })
+        assertEquals(listOf(true, true, false, true), entries.map { it.isActivity })
+        assertEquals("Permission request", entries[0].subtitle)
+        assertEquals("Run checks", entries[1].subtitle)
+        assertEquals("Write files", messages.last().activityTitle)
+        assertEquals(messages, entries.flatMap { it.messages })
     }
 
     @Test

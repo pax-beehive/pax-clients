@@ -200,4 +200,43 @@ class ConversationUiTest {
         compose.onNodeWithText("Updated full output").assertDoesNotExist()
         compose.onNodeWithText("The checks found an error.").assertIsDisplayed()
     }
+
+    @Test
+    fun manyPermissionNoticesStartCollapsedAndCanBeReadOnDemand() {
+        val permissions =
+            (1..30).map {
+                ChatItem(
+                    "permission:$it",
+                    "turn",
+                    "approval",
+                    "Review this request in Approvals.",
+                    "Permission request $it",
+                )
+            }
+        compose.setContent {
+            WorkspaceTheme {
+                ConversationTimeline(
+                    permissions + message("answer", "The answer remains visible."),
+                    "Connected",
+                    false,
+                    false,
+                    {},
+                    Modifier.width(360.dp).height(480.dp),
+                )
+            }
+        }
+
+        compose.onNodeWithText("Activity · 30 steps").assertIsDisplayed()
+        compose.onNodeWithText("The answer remains visible.").assertIsDisplayed()
+        compose.onNodeWithText("Review this request in Approvals.").assertDoesNotExist()
+        compose.onNodeWithTag("activity-step:permission:1").assertDoesNotExist()
+
+        compose.onNodeWithTag("activity-group:permission:1").performClick()
+        compose.onNodeWithTag("conversation-timeline")
+            .performScrollToNode(hasTestTag("activity-step:permission:30"))
+        compose.onNodeWithTag("activity-step:permission:30").performClick()
+        compose.onNodeWithTag("conversation-timeline")
+            .performScrollToNode(hasText("Review this request in Approvals."))
+        compose.onNodeWithText("Review this request in Approvals.").assertIsDisplayed()
+    }
 }
