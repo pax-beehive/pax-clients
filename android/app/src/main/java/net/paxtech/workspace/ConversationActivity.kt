@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import net.paxtech.workspace.data.Approval
 import net.paxtech.workspace.session.ChatItem
 
 private val activityRoles = setOf("tool", "thought", "approval")
@@ -78,61 +79,96 @@ internal fun activityStatus(messages: List<ChatItem>): String {
     }
 }
 
+internal data class ActivitySplit(val steps: ConversationEntry?, val decided: List<Approval>)
+
+/**
+ * Permission notices whose approval is decided leave the step list and collapse into one summary
+ * line below it. Notices without a known approval keep the original folded step.
+ */
+internal fun splitDecidedApprovals(
+    entry: ConversationEntry,
+    approvals: List<Approval>,
+): ActivitySplit {
+    val decided =
+        entry.messages.mapNotNull { message ->
+            approvals.forItem(message)?.takeIf { !it.pending }?.let { message.id to it }
+        }
+    if (decided.isEmpty()) return ActivitySplit(entry, emptyList())
+    val ids = decided.map { it.first }.toSet()
+    val rest = entry.messages.filter { it.id !in ids }
+    return ActivitySplit(
+        rest.takeIf { it.isNotEmpty() }?.let(::ConversationEntry),
+        decided.map { it.second }.distinctBy { it.approval_id },
+    )
+}
+
 @Composable
-internal fun ConversationActivity(entry: ConversationEntry) {
+internal fun ConversationActivity(
+    entry: ConversationEntry,
+    approvals: List<Approval> = emptyList(),
+    viewerId: String = "",
+) {
     var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
-    val tools = entry.messages.filter { it.role == "tool" }
-    val status = activityStatus(tools)
+    val split = remember(entry, approvals) { splitDecidedApprovals(entry, approvals) }
+    val steps = split.steps
+    val status = activityStatus(steps?.messages.orEmpty().filter { it.role == "tool" })
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         entry.messages
             .flatMap { it.attachments }
             .distinct()
             .forEach { attachment -> key(attachment) { AttachmentCard(attachment) } }
-        ActivityDisclosure(
-            title =
-                "Activity · ${entry.messages.size} ${if (entry.messages.size == 1) "step" else "steps"}",
-            subtitle = entry.subtitle,
-            status = status,
-            expanded = expanded,
-            modifier = Modifier.testTag("activity-group:${entry.id}"),
-            onClick = { expanded = !expanded },
-        )
-        AnimatedVisibility(
-            expanded,
-            enter = expandVertically(tween(200)) + fadeIn(tween(140)),
-            exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                entry.messages.forEach { message ->
-                    key(message.id) {
-                        var details by rememberSaveable(message.id) { mutableStateOf(false) }
-                        Column(Modifier.padding(start = 12.dp)) {
-                            ActivityDisclosure(
-                                title = message.activityTitle,
-                                status = activityStatus(listOf(message)),
-                                expanded = details,
-                                modifier = Modifier.testTag("activity-step:${message.id}"),
-                                onClick = { details = !details },
-                            )
-                            AnimatedVisibility(
-                                details,
-                                enter = expandVertically(tween(200)) + fadeIn(tween(140)),
-                                exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        message.text.ifBlank { "No additional details." },
-                                        Modifier.fillMaxWidth()
-                                            .heightIn(max = 240.dp)
-                                            .verticalScroll(rememberScrollState())
-                                            .padding(12.dp),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily =
-                                            if (message.role == "tool") FontFamily.Monospace
-                                            else null,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+        if (steps != null) {
+            ActivityDisclosure(
+                title =
+                    "Activity · ${steps.messages.size} ${if (steps.messages.size == 1) "step" else "steps"}",
+                subtitle = steps.subtitle,
+                status = status,
+                expanded = expanded,
+                modifier = Modifier.testTag("activity-group:${entry.id}"),
+                onClick = { expanded = !expanded },
+            )
+            ActivitySteps(steps, expanded)
+        }
+        ApprovalSummary(split.decided, viewerId)
+    }
+}
+
+@Composable
+private fun ActivitySteps(entry: ConversationEntry, expanded: Boolean) {
+    AnimatedVisibility(
+        expanded,
+        enter = expandVertically(tween(200)) + fadeIn(tween(140)),
+        exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            entry.messages.forEach { message ->
+                key(message.id) {
+                    var details by rememberSaveable(message.id) { mutableStateOf(false) }
+                    Column(Modifier.padding(start = 12.dp)) {
+                        ActivityDisclosure(
+                            title = message.activityTitle,
+                            status = activityStatus(listOf(message)),
+                            expanded = details,
+                            modifier = Modifier.testTag("activity-step:${message.id}"),
+                            onClick = { details = !details },
+                        )
+                        AnimatedVisibility(
+                            details,
+                            enter = expandVertically(tween(200)) + fadeIn(tween(140)),
+                            exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    message.text.ifBlank { "No additional details." },
+                                    Modifier.fillMaxWidth()
+                                        .heightIn(max = 240.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(12.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily =
+                                        if (message.role == "tool") FontFamily.Monospace else null,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }

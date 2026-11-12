@@ -146,7 +146,21 @@ data class Approval(
     val request_node_id: String = "",
     val request_agent_id: String = "",
     val options: List<ApprovalOption> = emptyList(),
-)
+    /** ACP JSON-RPC request id and tool call id; they link an approval to its transcript row. */
+    val native_id: String = "",
+    val resource_ref: String = "",
+    /** The original `session/request_permission` params. Kept untyped so odd payloads never fail the list. */
+    val request_body: JsonElement? = null,
+    val decision: String = "",
+    val decision_option: String = "",
+    val decision_scope: String = "",
+    val decided_by_user_id: String = "",
+    val created_at: String = "",
+    val decided_at: String = "",
+) {
+    val pending: Boolean
+        get() = status.isBlank() || status.equals("pending", ignoreCase = true)
+}
 
 data class Workspace(
     val sessions: List<AgentSession> = emptyList(),

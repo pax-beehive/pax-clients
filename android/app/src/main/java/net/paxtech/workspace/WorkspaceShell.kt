@@ -361,15 +361,13 @@ private fun WorkspaceHome(
                         icon = {
                             BadgedBox(
                                 badge = {
-                                    if (
-                                        label == "Approvals" &&
-                                            state.workspace.approvals.isNotEmpty()
-                                    )
+                                    val waiting = state.workspace.approvals.count { it.pending }
+                                    if (label == "Approvals" && waiting > 0)
                                         Badge(
                                             containerColor = WorkspaceAttention,
                                             contentColor = WorkspaceOnAttention,
                                         ) {
-                                            Text(state.workspace.approvals.size.toString())
+                                            Text(waiting.toString())
                                         }
                                 }
                             ) {
@@ -581,14 +579,16 @@ private fun WorkspaceHome(
                         }
                 }
                 "Approvals" -> {
-                    if (state.workspace.approvals.isNotEmpty())
-                        item { SectionLabel("NEEDS YOUR ATTENTION") }
-                    items(state.workspace.approvals, key = { it.approval_id }) { approval ->
-                        ApprovalCard(approval, state.working) { option ->
+                    val pending = state.workspace.approvals.filter { it.pending }
+                    val decided = state.workspace.approvals.filterNot { it.pending }
+                    if (pending.isNotEmpty()) item { SectionLabel("NEEDS YOUR ATTENTION") }
+                    items(pending, key = { it.approval_id }) { approval ->
+                        PendingApprovalCard(approval, state.working, ConversationIdentity()) {
+                            option ->
                             vm.decide(approval, option)
                         }
                     }
-                    if (state.workspace.approvals.isEmpty() && !state.loading)
+                    if (pending.isEmpty() && !state.loading)
                         item {
                             WorkspaceEmptyState(
                                 "You're all caught up",
@@ -596,6 +596,10 @@ private fun WorkspaceHome(
                                 icon = Icons.Outlined.CheckCircle,
                             )
                         }
+                    if (decided.isNotEmpty()) item { SectionLabel("RECENT") }
+                    items(decided, key = { "decided:${it.approval_id}" }) { approval ->
+                        DecidedApprovalRow(approval, state.credential?.userId.orEmpty())
+                    }
                 }
                 "Settings" -> {
                     item {
@@ -698,68 +702,6 @@ private fun WorkspaceHome(
         )
 }
 
-@Composable
-private fun ApprovalCard(
-    approval: Approval,
-    working: Boolean,
-    onDecision: (ApprovalOption) -> Unit,
-) {
-    var selected by remember { mutableStateOf<ApprovalOption?>(null) }
-    Card(
-        Modifier.fillMaxWidth(),
-        colors =
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatusLabel(
-                approval.status.ifBlank { "pending" }.replaceFirstChar { it.uppercase() },
-                attention = approval.status in setOf("", "pending"),
-            )
-            Text(approval.title, style = MaterialTheme.typography.titleMedium)
-            if (approval.description.isNotBlank())
-                Text(
-                    approval.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            approval.options
-                .filter { it.option_id.isNotBlank() }
-                .forEach { option ->
-                    WorkspaceOutlinedButton(
-                        onClick = { selected = option },
-                        enabled = !working && approval.status in setOf("", "pending"),
-                    ) {
-                        Text(option.label.ifBlank { option.option_id })
-                    }
-                }
-        }
-    }
-    selected?.let { option ->
-        AlertDialog(
-            onDismissRequest = { selected = null },
-            title = { Text(option.label.ifBlank { "Confirm decision" }) },
-            text = {
-                Text(
-                    "${approval.title}\n${option.scope.ifBlank { "Apply this decision to the requested action." }}"
-                )
-            },
-            confirmButton = {
-                WorkspaceButton(
-                    onClick = {
-                        selected = null
-                        onDecision(option)
-                    }
-                ) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                WorkspaceOutlinedButton(onClick = { selected = null }) { Text("Cancel") }
-            },
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SessionScreen(
@@ -809,7 +751,8 @@ private fun SessionScreen(
                                     working = session.busy && session.connection == "Connected",
                                     waitingForApproval =
                                         state.workspace.approvals.any {
-                                            it.request_session_id == target.session_id
+                                            it.request_session_id == target.session_id &&
+                                                it.pending
                                         },
                                 )
                             }
@@ -975,8 +918,11 @@ private fun SessionScreen(
                                 it.request_session_id == target.session_id
                             },
                         approval = { approval ->
-                            ApprovalCard(approval, state.working) { vm.decide(approval, it) }
+                            PendingApprovalCard(approval, state.working, identity) {
+                                vm.decide(approval, it)
+                            }
                         },
+                        viewerId = state.credential?.userId.orEmpty(),
                     )
                 }
             }

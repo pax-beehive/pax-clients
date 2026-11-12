@@ -1,5 +1,11 @@
 # Android internal client
 
+## Compact approvals (unreleased)
+
+Pending approvals are compact cards at the tail with Deny / Allow once inline and broader
+grants in a sheet; long commands are clamped. Decided approvals collapse to one line in place
+instead of staying pinned below the newest reply. See [behavior and contract](android-approvals.md).
+
 ## Send interaction (0.1.13)
 
 The rounded composer lifts into a compact message bubble on send. A single breathing

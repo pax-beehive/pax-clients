@@ -166,15 +166,22 @@ internal fun ConversationTimeline(
     motion: SendMotionState? = null,
     waitingForReply: Boolean = false,
     identity: ConversationIdentity = ConversationIdentity(),
+    viewerId: String = "",
 ) {
-    val entries = remember(messages) { conversationEntries(messages) }
+    // Only undecided approvals sit at the tail. Their transcript notice is hidden meanwhile;
+    // once decided, the notice returns in place as a one-line summary (see ConversationActivity).
+    val pending = remember(approvals) { approvals.filter { it.pending } }
+    val entries =
+        remember(messages, approvals) {
+            conversationEntries(withoutPendingNotices(messages, approvals))
+        }
     val atTail by remember(list) { derivedStateOf { !list.canScrollBackward } }
     // Capture the old layout before the new tail is measured. Stable-key anchoring otherwise
     // keeps the previous message visible even when a reader was following the conversation.
     val followNewTail = atTail
     LaunchedEffect(
         messages.lastOrNull()?.id,
-        approvals.lastOrNull()?.approval_id,
+        pending.lastOrNull()?.approval_id,
         waitingForReply,
     ) {
         // Scaffold may compose this effect during measurement. Schedule the scroll
@@ -202,7 +209,7 @@ internal fun ConversationTimeline(
                 }
             }
         items(
-            approvals.asReversed(),
+            pending.asReversed(),
             key = { "approval:${it.approval_id}" },
             contentType = { "approval-card" },
         ) {
@@ -220,7 +227,7 @@ internal fun ConversationTimeline(
                     fadeOutSpec = tween(120),
                 )
             ) {
-                if (it.isActivity) ConversationActivity(it)
+                if (it.isActivity) ConversationActivity(it, approvals, viewerId)
                 else MessageCard(it.messages.single(), motion, identity)
             }
         }

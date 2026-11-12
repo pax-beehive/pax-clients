@@ -11,7 +11,29 @@ data class ChatItem(
     val title: String = "",
     val status: String = "",
     val attachments: List<ChatAttachment> = emptyList(),
+    val approval: ApprovalRef? = null,
 )
+
+/**
+ * Identifies the approval behind a `session/request_permission` row. Manager injects the approval
+ * id into the forwarded frame; the request and tool call ids match `native_id` and `resource_ref`.
+ */
+data class ApprovalRef(
+    val approvalId: String = "",
+    val toolCallId: String = "",
+    val requestId: String = "",
+)
+
+private const val PERMISSION_NOTICE = "Review this request in Approvals."
+
+private fun permissionRef(frame: JsonObject): ApprovalRef {
+    val params = frame.obj("params")
+    return ApprovalRef(
+        approvalId = params.text("approval_id", params.text("approvalId")),
+        toolCallId = params.obj("toolCall").text("toolCallId"),
+        requestId = frame.text("id"),
+    )
+}
 
 /** Mutable only inside SessionRuntime's mutex; UI receives immutable snapshots. */
 class Timeline {
@@ -75,6 +97,24 @@ class Timeline {
         val id = value.text("message_id")
         if (id.isBlank()) return
         (historyIds.remove(id) ?: listOf(id)).forEach(::remove)
+        val raw = value.obj("raw_json")
+        if (
+            value.text("message_type") == "session/request_permission" ||
+                raw.text("method") == "session/request_permission"
+        ) {
+            // Stored permission requests carry no text; keep them as anchors for their approval.
+            items[id] =
+                ChatItem(
+                    id,
+                    value.text("turn_id"),
+                    "approval",
+                    PERMISSION_NOTICE,
+                    raw.obj("params").obj("toolCall").text("title", "Approval required"),
+                    approval = permissionRef(raw),
+                )
+            historyIds[id] = listOf(id)
+            return
+        }
         val tool = value.obj("tool")
         val attachments = historyAttachments(value)
         val parts =
@@ -221,8 +261,9 @@ class Timeline {
                         id,
                         turn,
                         "approval",
-                        "Review this request in Approvals.",
+                        PERMISSION_NOTICE,
                         params.obj("toolCall").text("title", "Approval required"),
+                        approval = permissionRef(frame),
                     )
             }
         }
