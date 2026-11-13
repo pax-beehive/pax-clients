@@ -744,6 +744,8 @@ private fun SessionScreen(
     showSidebar: (() -> Unit)?,
 ) {
     val session by vm.session.collectAsStateWithLifecycle()
+    val sessionSettings by vm.settings.state.collectAsStateWithLifecycle()
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showActions by remember { mutableStateOf(false) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val currentTarget =
@@ -873,10 +875,31 @@ private fun SessionScreen(
                             onSend = vm::send,
                             onStop = vm::stop,
                             motion = motion,
+                            settings =
+                                sessionSettings
+                                    ?.takeIf { it.session.session_id == target.session_id }
+                                    ?.let { settings ->
+                                        {
+                                            SessionSettingsButton(settings.summary, {
+                                                vm.settings.reload()
+                                                showSettings = true
+                                            })
+                                        }
+                                    },
                         )
                     }
             },
         ) { padding ->
+            val openSettings = sessionSettings
+            if (showSettings && openSettings != null)
+                SessionSettingsSheet(
+                    openSettings,
+                    onOption = vm.settings::setOption,
+                    onPermission = vm::setPermission,
+                    onRefresh = vm.settings::refresh,
+                    onRetry = vm.settings::reload,
+                    onDismiss = { showSettings = false },
+                )
             if (session.locked) {
                 LazyColumn(
                     Modifier.padding(padding).fillMaxSize(),

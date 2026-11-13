@@ -51,6 +51,7 @@ constructor(
 
     val nodeTools = NodeToolsController(repo, vault, viewModelScope)
     val search = SearchController(repo, viewModelScope)
+    val settings = SessionSettingsController(repo, viewModelScope)
     val newProject =
         NewProjectController(
             repo,
@@ -261,6 +262,7 @@ constructor(
         readJob?.cancel()
         sendJob?.cancel()
         mutable.update { it.copy(selected = target, pairing = null, error = null) }
+        settings.open(target)
         reconnect()
     }
 
@@ -272,9 +274,27 @@ constructor(
         launchAction { open(repo.sessionById(group.session_id)) }
     }
 
+    fun setPermission(choiceId: String) {
+        settings.setPermission(choiceId) { saved ->
+            // Keep the session list in step so reopening shows the new choice.
+            mutable.update { state ->
+                state.copy(
+                    workspace =
+                        state.workspace.copy(
+                            sessions =
+                                state.workspace.sessions.map {
+                                    if (it.session_id == saved.session_id) saved else it
+                                }
+                        )
+                )
+            }
+        }
+    }
+
     fun close() {
         readJob?.cancel()
         sendJob?.cancel()
+        settings.clear()
         mutable.update { it.copy(selected = null, pairing = null) }
         refresh()
     }
