@@ -42,6 +42,7 @@ internal fun MessageComposer(
     onSend: (String) -> String?,
     onStop: () -> Unit,
     motion: SendMotionState? = null,
+    settings: (@Composable () -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     var draft by rememberSaveable { mutableStateOf("") }
@@ -65,12 +66,12 @@ internal fun MessageComposer(
                 border =
                     BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .65f)),
             ) {
-                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
+                val field: @Composable (Modifier) -> Unit = { modifier ->
                     BasicTextField(
                         value = draft,
                         onValueChange = { draft = it },
                         modifier =
-                            Modifier.weight(1f)
+                            modifier
                                 .padding(horizontal = 12.dp, vertical = 12.dp)
                                 .heightIn(min = 24.dp)
                                 .testTag("message-composer"),
@@ -92,6 +93,8 @@ internal fun MessageComposer(
                             }
                         },
                     )
+                }
+                val action: @Composable () -> Unit = {
                     ComposerAction(
                         busy = busy,
                         enabled = busy || (draft.isNotBlank() && connection == "Connected"),
@@ -110,6 +113,22 @@ internal fun MessageComposer(
                         },
                     )
                 }
+                if (settings == null)
+                    Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
+                        field(Modifier.weight(1f))
+                        action()
+                    }
+                else
+                    Column(Modifier.fillMaxWidth().padding(4.dp)) {
+                        field(Modifier.fillMaxWidth())
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.weight(1f).padding(end = 8.dp)) { settings() }
+                            action()
+                        }
+                    }
             }
         }
     }

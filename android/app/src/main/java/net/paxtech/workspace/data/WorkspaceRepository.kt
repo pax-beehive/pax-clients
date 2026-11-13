@@ -43,6 +43,13 @@ private constructor(val api: PaxApi, private val readCredential: suspend () -> C
         )
     }
 
+    suspend fun send(method: String, path: List<String>, body: JsonObject): JsonElement {
+        val c = credential()
+        return api.json(
+            api.request(c.origin, userPath(*path.toTypedArray()), c.apiKey, method, body)
+        )
+    }
+
     suspend fun load(page: Int = 1): Workspace = coroutineScope {
         val sessions = async {
             get("sessions", query = mapOf("page_num" to "$page", "page_size" to "50")).jsonObject

@@ -1,5 +1,19 @@
 # Android internal client
 
+## Session settings (unreleased)
+
+The composer has one settings button under the text field, like the web composer, labelled
+with the current summary (for example "Opus · High · Ask before tools"). It opens a sheet with
+the agent-reported options (model as a list, short value sets such as reasoning effort as a
+segmented control, booleans as switches) and the PAX permission choices. Choices that require
+confirmation ask first. Agent "mode" options are not shown twice; permission modes come from
+the permission catalog. Encrypted sessions show permissions only, as on the web.
+
+Endpoints (confirmed in manager `server.go`): `GET`/`PATCH options/{id}`/`POST refresh` on
+`nodes/{node}/agents/{agent}/sessions/{session}/configuration`, `GET agents/{agent}/permission-catalog`
+and `POST …/sessions/{session}/permission`. Default permission resolution is ported from
+pax-console `permission-catalog.ts`.
+
 ## Workspace search (unreleased)
 
 The Home search field now queries Manager instead of filtering the loaded page of
