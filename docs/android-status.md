@@ -1,5 +1,16 @@
 # Android internal client
 
+## Workspace search (unreleased)
+
+The Home search field now queries Manager instead of filtering the loaded page of
+session titles. It calls `POST search` with `group_by: "session"` (same request as the web
+search page) after a 350 ms pause, shows one card per session with up to two highlighted
+title/message/summary snippets, and pages with "More results". If grouped search answers
+503 (index migration), the first page falls back to raw hits grouped on the device; a
+grouped cursor never switches modes. Opening a hit for a session that is not loaded reads
+`GET sessions/{session_id}` for its node first. The project filter does not apply to
+search results.
+
 ## Compact approvals (unreleased)
 
 Pending approvals are compact cards at the tail with Deny / Allow once inline and broader

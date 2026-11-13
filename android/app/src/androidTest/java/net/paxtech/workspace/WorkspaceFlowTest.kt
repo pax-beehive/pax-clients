@@ -27,6 +27,7 @@ class WorkspaceFlowTest {
     private val server = MockWebServer()
     @Volatile private var sent = false
     @Volatile private var decision = false
+    @Volatile private var searchBody = ""
     @Volatile private var gallery = false
     @Volatile private var streaming = false
     @Volatile private var createdSession: JsonObject? = null
@@ -110,6 +111,14 @@ class WorkspaceFlowTest {
                     }
                     val data =
                         when {
+                            request.method == "POST" && path.endsWith("/search") -> {
+                                searchBody = request.body.readUtf8()
+                                // A content hit in a session that is not on the loaded page.
+                                if (!searchBody.contains("deploy")) """{"hits":[],"groups":[]}"""
+                                else """{"hits":[],"groups":[{"key":"session:session_remote","title":"Deploy pipeline review","agent_id":"agent_test","session_id":"session_remote","matches":[{"ref":{"kind":"message","id":"m1"},"snippet":"The staging deploy failed because the cache key changed.","agent_id":"agent_test","session_id":"session_remote"},{"ref":{"kind":"summary","id":"s1"},"snippet":"Deploy is blocked on cache invalidation.","agent_id":"agent_test","session_id":"session_remote"}],"matches_has_more":false}],"next_cursor":""}"""
+                            }
+                            path.endsWith("/sessions/session_remote") ->
+                                """{"session_id":"session_remote","node_id":"node_test","agent_id":"agent_test","agent_type":"codex","name":"Deploy pipeline review","runtime_status":"idle"}"""
                             path.endsWith("/authenticate") -> {
                                 val claims =
                                     "{\"sub\":\"user_fixture\",\"exp\":${System.currentTimeMillis() / 1000 + 300}}"
@@ -201,6 +210,24 @@ class WorkspaceFlowTest {
         scenario?.close()
         if (::vault.isInitialized) runBlocking { vault.update { VaultData() } }
         server.shutdown()
+    }
+
+    @Test
+    fun searchUsesTheServerAndOpensSessionsBeyondTheLoadedPage() {
+        launch(true)
+        awaitText("Enter workspace")
+        compose.onNodeWithText("Enter workspace").performClick()
+        awaitText("Android integration session")
+        compose.onNodeWithText("Search sessions").performTextInput("deploy")
+        awaitText("Deploy pipeline review")
+        // Not a local title filter: the only loaded session doesn't contain "deploy".
+        compose.onNodeWithText("Android integration session").assertDoesNotExist()
+        compose.onNodeWithText("Search results").assertIsDisplayed()
+        assertTrue(searchBody, searchBody.contains("\"query\":\"deploy\""))
+        assertTrue(searchBody, searchBody.contains("\"group_by\":\"session\""))
+        capture("search-results")
+        compose.onNodeWithText("Deploy pipeline review").performClick()
+        awaitText("Hello from the test agent")
     }
 
     private fun launch(signedIn: Boolean) {
@@ -561,7 +588,7 @@ class WorkspaceFlowTest {
             awaitText("Refine the Android experience")
             capture("polish-home-compact")
             compose.onNodeWithText("Search sessions").performTextInput("no such session")
-            awaitText("No matching sessions")
+            awaitText("No matches")
             capture("polish-search-empty")
             compose.onNodeWithContentDescription("Clear search").performClick()
             awaitText("Refine the Android experience")
