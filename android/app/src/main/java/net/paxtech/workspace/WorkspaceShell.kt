@@ -278,6 +278,9 @@ private fun WorkspaceHome(
     var tab by rememberSaveable { mutableStateOf("Home") }
     var homeTab by rememberSaveable { mutableStateOf("Home") }
     var filter by rememberSaveable { mutableStateOf("") }
+    val search by vm.search.state.collectAsStateWithLifecycle()
+    // A restored query (rotation, process death) must re-run, not show "No matches".
+    LaunchedEffect(Unit) { if (filter.isNotBlank()) vm.search.search(filter) }
     var project by rememberSaveable { mutableStateOf("") }
     var signOut by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -402,7 +405,10 @@ private fun WorkspaceHome(
                     item {
                         OutlinedTextField(
                             filter,
-                            { filter = it },
+                            {
+                                filter = it
+                                vm.search.search(it)
+                            },
                             textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp),
                             placeholder = {
                                 Text("Search sessions", style = MaterialTheme.typography.labelLarge)
@@ -412,7 +418,12 @@ private fun WorkspaceHome(
                             },
                             trailingIcon = {
                                 if (filter.isNotEmpty())
-                                    IconButton(onClick = { filter = "" }) {
+                                    IconButton(
+                                        onClick = {
+                                            filter = ""
+                                            vm.search.clear()
+                                        }
+                                    ) {
                                         Icon(Icons.Outlined.Close, "Clear search")
                                     }
                             },
@@ -444,7 +455,7 @@ private fun WorkspaceHome(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Recent sessions",
+                                if (filter.isBlank()) "Recent sessions" else "Search results",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -460,6 +471,27 @@ private fun WorkspaceHome(
                             }
                         }
                     }
+                    if (filter.isNotBlank()) {
+                        // Server search covers every session, message and summary, not only
+                        // the loaded page of titles.
+                        searchResults(
+                            search,
+                            titleFor = { group ->
+                                group.title.ifBlank {
+                                    state.workspace.sessions
+                                        .firstOrNull { it.session_id == group.session_id }
+                                        ?.title ?: "Untitled session"
+                                }
+                            },
+                            onOpen = {
+                                focusManager.clearFocus()
+                                vm.openSearchResult(it)
+                            },
+                            onMore = vm.search::loadMore,
+                            onRetry = vm.search::retry,
+                        )
+                        return@LazyColumn
+                    }
                     if (project.isNotEmpty())
                         item {
                             WorkspaceOutlinedButton(onClick = { project = "" }) {
@@ -468,8 +500,7 @@ private fun WorkspaceHome(
                         }
                     val shown =
                         state.workspace.sessions.filter {
-                            (project.isEmpty() || it.primary_project_id == project) &&
-                                (filter.isBlank() || it.title.contains(filter, true))
+                            project.isEmpty() || it.primary_project_id == project
                         }
                     items(shown, key = { it.session_id }) { target ->
                         SessionRow(
@@ -488,10 +519,10 @@ private fun WorkspaceHome(
                     if (shown.isEmpty() && !state.loading)
                         item {
                             WorkspaceEmptyState(
-                                if (filter.isNotBlank() || project.isNotEmpty())
+                                if (project.isNotEmpty())
                                     "No matching sessions"
                                 else "Ready when you are",
-                                if (filter.isNotBlank() || project.isNotEmpty())
+                                if (project.isNotEmpty())
                                     "Try another search or choose a different project."
                                 else "Tap + to start a session in your workspace.",
                                 icon = Icons.Outlined.Search,
@@ -518,6 +549,7 @@ private fun WorkspaceHome(
                         ) {
                             project = item.project_id
                             filter = ""
+                            vm.search.clear()
                             tab = "Home"
                             homeTab = "Home"
                         }

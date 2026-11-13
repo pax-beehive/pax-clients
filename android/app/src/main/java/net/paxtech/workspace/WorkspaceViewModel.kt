@@ -50,6 +50,7 @@ constructor(
     }
 
     val nodeTools = NodeToolsController(repo, vault, viewModelScope)
+    val search = SearchController(repo, viewModelScope)
     val newProject =
         NewProjectController(
             repo,
@@ -261,6 +262,14 @@ constructor(
         sendJob?.cancel()
         mutable.update { it.copy(selected = target, pairing = null, error = null) }
         reconnect()
+    }
+
+    /** Search hits name a session but not its node; fetch it when it isn't loaded yet. */
+    fun openSearchResult(group: SearchGroup) {
+        val loaded = state.value.workspace.sessions.firstOrNull { it.session_id == group.session_id }
+        if (loaded != null) return open(loaded)
+        if (group.session_id.isBlank()) return
+        launchAction { open(repo.sessionById(group.session_id)) }
     }
 
     fun close() {
